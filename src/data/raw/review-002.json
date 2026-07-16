@@ -1,0 +1,12 @@
+{
+  "id": "review-002",
+  "source": "app_store",
+  "source_url": "https://apps.apple.com/in/app/zepto-groceries-in-minutes/id1575323645?see-all=reviews&platform=iphone",
+  "raw_text": "I avoid buying personal care because packaging quality feels risky.",
+  "cleaned_text": null,
+  "language": null,
+  "collected_at": "2026-07-16T18:05:07.601711",
+  "metadata": {
+    "platform": "app_store"
+  }
+}
