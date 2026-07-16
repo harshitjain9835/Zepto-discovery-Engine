@@ -88,12 +88,18 @@ with st.sidebar:
         output_path = write_dashboard("phase7_dashboard.html")
         st.success(f"Dashboard written to {output_path}")
 
-st.markdown("<div class='topnav'>", unsafe_allow_html=True)
-st.markdown("<div style='display:flex; justify-content:space-between; align-items:center;'>")
-st.markdown("<div><strong>Zepto Insights</strong> · Discovery Engine</div>")
-st.markdown("<div style='display:flex; gap:0.8rem;'> <span>Dashboard</span> <span>Analytics</span> <span>Growth</span> <span>Forecasts</span></div>")
-st.markdown("</div>", unsafe_allow_html=True)
-st.markdown("</div>", unsafe_allow_html=True)
+# Top navigation bar
+st.markdown(
+    """
+    <div class='topnav'>
+        <div style='display:flex; justify-content:space-between; align-items:center;'>
+            <div><strong>Zepto Insights</strong> · Discovery Engine</div>
+            <div style='display:flex; gap:0.8rem;'><span>Dashboard</span><span>Analytics</span><span>Growth</span><span>Forecasts</span></div>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 search_query = st.text_input("", placeholder="Search reviews, themes, or evidence...", label_visibility="collapsed")
 if search_query:
