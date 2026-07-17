@@ -94,30 +94,25 @@ st.markdown(
     <div class='topnav'>
         <div style='display:flex; justify-content:space-between; align-items:center;'>
             <div><strong>Zepto Insights</strong> · Discovery Engine</div>
-            <div style='display:flex; gap:0.8rem;'><span>Dashboard</span><span>Analytics</span><span>Growth</span><span>Forecasts</span></div>
         </div>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-search_query = st.text_input("", placeholder="Search reviews, themes, or evidence...", label_visibility="collapsed")
-if search_query:
-    st.caption(f"Search query: {search_query}")
-
-st.markdown("<div class='hero'>")
-st.markdown("### Zepto Insights")
-st.markdown("## Discovery Engine Phase 7 Dashboard")
-st.markdown("Live review mining, annotation, insight cards, and monitoring evidence in one place.")
-col_a, col_b = st.columns([3, 1])
-with col_a:
-    if st.button("Refresh insights", use_container_width=True):
-        st.rerun()
-with col_b:
-    st.button("Ask AI", use_container_width=True)
-st.markdown("</div>")
-
-st.markdown("<br>", unsafe_allow_html=True)
+# Main "Ask AI" section
+st.markdown("<div class='card'>", unsafe_allow_html=True)
+st.subheader("🤖 Ask the Discovery Engine")
+st.write("Ask a question about category trust, basket behavior, or review evidence. The AI will synthesize findings and provide evidence-backed answers.")
+search_query = st.text_input("", placeholder="e.g., What blocks category exploration?", label_visibility="collapsed")
+if st.button("Ask AI", use_container_width=True, type="primary"):
+    if search_query:
+        st.info(f"Searching for: \"{search_query}\"")
+        # Placeholder for chatbot response logic
+        st.success("AI response would appear here.")
+    else:
+        st.warning("Please enter a question.")
+st.markdown("</div>", unsafe_allow_html=True)
 
 col1, col2, col3 = st.columns(3)
 with col1:
