@@ -6,6 +6,7 @@ from src.zepto_discovery.annotation import Phase4AnnotationPipeline
 from src.zepto_discovery.dashboard import ensure_review_records, write_dashboard
 from src.zepto_discovery.insights import Phase5InsightPipeline
 from src.zepto_discovery.monitoring import Phase8MonitoringPipeline
+from src.zepto_discovery.preprocessing import PreprocessingPipeline
 
 
 st.set_page_config(page_title="Zepto Discovery Engine", page_icon="⚡", layout="wide")
@@ -66,10 +67,15 @@ reviews = ensure_review_records()
 annotation_pipeline = Phase4AnnotationPipeline()
 insight_pipeline = Phase5InsightPipeline()
 monitoring_pipeline = Phase8MonitoringPipeline()
+preprocessing_pipeline = PreprocessingPipeline()
 
 annotations = annotation_pipeline.annotate_reviews(reviews)
 insights = insight_pipeline.build_insight_cards(reviews, annotations)
 health_report = monitoring_pipeline.generate_health_report(annotations)
+
+# Preprocess reviews into searchable chunks for the chatbot
+review_chunks = preprocessing_pipeline.build_chunks(reviews)
+
 
 with st.sidebar:
     st.markdown("### Filters")
@@ -107,9 +113,17 @@ st.write("Ask a question about category trust, basket behavior, or review eviden
 search_query = st.text_input("", placeholder="e.g., What blocks category exploration?", label_visibility="collapsed")
 if st.button("Ask AI", use_container_width=True, type="primary"):
     if search_query:
-        st.info(f"Searching for: \"{search_query}\"")
-        # Placeholder for chatbot response logic
-        st.success("AI response would appear here.")
+        with st.spinner("Synthesizing answer from review evidence..."):
+            # Find relevant chunks using the preprocessing pipeline's search simulation
+            relevant_chunks = preprocessing_pipeline.re_rank_with_large(search_query, review_chunks, top_k=3)
+
+            st.info(f"Found {len(relevant_chunks)} relevant pieces of evidence for: \"{search_query}\"")
+
+            # Display the findings
+            for chunk in relevant_chunks:
+                with st.container(border=True):
+                    st.write(f"📄 **Evidence from Review ID:** `{chunk['review_id']}`")
+                    st.caption(chunk["text"])
     else:
         st.warning("Please enter a question.")
 st.markdown("</div>", unsafe_allow_html=True)
