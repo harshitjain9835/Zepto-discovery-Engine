@@ -1,256 +1,310 @@
 from __future__ import annotations
 
-import streamlit as st
+import json
+from pathlib import Path
+from typing import Any
 
-from src.zepto_discovery.annotation import Phase4AnnotationPipeline
-from src.zepto_discovery.dashboard import ensure_review_records, write_dashboard
-from src.zepto_discovery.insights import Phase5InsightPipeline
-from src.zepto_discovery.monitoring import Phase8MonitoringPipeline
-from src.zepto_discovery.preprocessing import PreprocessingPipeline
-from src.zepto_discovery.vector_store import InMemoryVectorStore, embed_and_upsert
-from src.zepto_discovery.embeddings import embed_small
+from .annotation import Phase4AnnotationPipeline
+from .config import RAW_DATA_DIR, PROJECT_ROOT
+from .models import InsightCard, ReviewRecord, SourceType
+from .pipeline import Phase1Pipeline
+from .insights import Phase5InsightPipeline
 
 
-def build_chatbot_response(search_query: str, evidence_chunks: list[dict]) -> tuple[str, list[str]]:
-    """Convert retrieved evidence into a natural-language answer and highlight bullets."""
-    if not evidence_chunks:
-        return "I could not find enough matching review evidence for that question yet. Try a broader or more specific query.", []
-
-    normalized_query = search_query.lower().strip()
-    evidence_text = " ".join(str(chunk.get("text", "")).strip() for chunk in evidence_chunks if chunk.get("text"))
-    evidence_text = evidence_text.lower()
-
-    theme_patterns = {
-        "delivery speed": ["delivery", "fast", "slow", "late", "arrive"],
-        "product quality": ["quality", "damaged", "packaging", "fresh", "vegetables", "skincare"],
-        "trust and confidence": ["trust", "risk", "hesitant", "reliable", "confidence"],
-        "support experience": ["support", "respond", "issue", "customer"],
-        "selection and discovery": ["category", "exploration", "snacks", "basket", "recommend", "section"],
-    }
-
-    matched_themes = []
-    for theme, keywords in theme_patterns.items():
-        if any(keyword in evidence_text for keyword in keywords):
-            matched_themes.append(theme)
-
-    if not matched_themes:
-        matched_themes = ["review sentiment and experience"]
-
-    theme_summary = ", ".join(matched_themes[:3])
-    if len(matched_themes) > 3:
-        theme_summary += ", and more"
-
-    summary = (
-        f"Based on the latest reviews, customers are mainly discussing {theme_summary} in relation to your question about \"{search_query}\". "
-        "The overall pattern points to a mix of convenience gains and recurring friction around trust, quality, and support."
-    )
-
-    highlights = []
-    for chunk in evidence_chunks[:3]:
-        text = str(chunk.get("text", "")).strip()
-        if not text:
+def load_review_records() -> list[ReviewRecord]:
+    RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    reviews: list[ReviewRecord] = []
+    for path in sorted(RAW_DATA_DIR.glob("*.json")):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            reviews.append(ReviewRecord.model_validate(payload))
+        except Exception:
             continue
-        if any(keyword in text.lower() for keyword in ["delivery", "fast", "slow", "late"]):
-            highlights.append("Delivery speed is a major part of the experience, with some reviewers praising convenience and others flagging delays.")
-        elif any(keyword in text.lower() for keyword in ["packaging", "damaged", "quality", "fresh", "vegetables", "skincare"]):
-            highlights.append("Product quality and packaging concerns are recurring, especially for personal care and fresh items.")
-        elif any(keyword in text.lower() for keyword in ["support", "respond", "issue", "customer"]):
-            highlights.append("Support responsiveness is mentioned as a pain point when issues arise.")
-        elif any(keyword in text.lower() for keyword in ["category", "exploration", "snacks", "basket", "recommend", "section"]):
-            highlights.append("Selection and discovery seem to influence whether shoppers feel comfortable exploring new categories.")
-        else:
-            highlights.append("The feedback reflects a blend of routine satisfaction and hesitation around trying new items.")
-        if len(highlights) >= 3:
-            break
-
-    if not highlights:
-        highlights = ["The evidence suggests the experience is mostly shaped by convenience, trust, and product quality."]
-
-    return summary, highlights
+    return reviews
 
 
-st.set_page_config(page_title="Zepto Discovery Engine", page_icon="⚡", layout="wide")
+def ensure_review_records() -> list[ReviewRecord]:
+  txt_reviews = load_reviews_from_txt(PROJECT_ROOT.parent / "reviews.txt")
+  if txt_reviews and len(txt_reviews) >= 8:
+    persist_review_records(txt_reviews)
+    return txt_reviews
 
-st.markdown(
-    """
-    <style>
-    .stApp {
-        background: #fbf8ff;
-        color: #1b1b20;
-    }
-    .block-container {
-        padding-top: 2rem;
-        padding-bottom: 2rem;
-        max-width: 1500px;
-    }
-    div[data-testid="stMetric"] {
-        background: white;
-        border: 1px solid #e4e1e9;
-        border-radius: 1rem;
-        padding: 1rem;
-        box-shadow: 0 12px 30px rgba(81, 0, 150, 0.06);
-    }
-    .card {
-        background: white;
-        border: 1px solid #e4e1e9;
-        border-radius: 1.5rem;
-        padding: 1.25rem;
-        box-shadow: 0 20px 50px rgba(81, 0, 150, 0.06);
-    }
-    .hero {
-        background: linear-gradient(135deg, #510096 0%, #7000cc 100%);
-        border-radius: 2rem;
-        padding: 2rem;
-        color: white;
-        box-shadow: 0 24px 60px rgba(81, 0, 150, 0.15);
-    }
-    .topnav {
-        background: white;
-        border: 1px solid #e4e1e9;
-        border-radius: 999px;
-        padding: 0.6rem 1rem;
-        margin-bottom: 1.2rem;
-        box-shadow: 0 10px 24px rgba(81, 0, 150, 0.05);
-    }
-    .search-shell {
-        border: 1px solid #e4e1e9;
-        border-radius: 999px;
-        padding: 0.5rem 0.8rem;
-        background: #f6f2fa;
-    }
-    button[data-testid="stButton"] > div[data-testid="stMarkdownContainer"] > p {
-        color: white;
-        background-color: #701EB2;
-    }
-    /* Custom style for the search input to remove right-side border radius */
-    div[data-testid="stTextInput"] > div {
-        border-top-right-radius: 0;
-        border-bottom-right-radius: 0;
-        border-right: none;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+  reviews = load_review_records()
+  if reviews and len(reviews) >= 8:
+    return reviews
 
-reviews = ensure_review_records()
-annotation_pipeline = Phase4AnnotationPipeline()
-insight_pipeline = Phase5InsightPipeline()
-monitoring_pipeline = Phase8MonitoringPipeline()
-preprocessing_pipeline = PreprocessingPipeline()
-vector_store = InMemoryVectorStore()
-
-annotations = annotation_pipeline.annotate_reviews(reviews)
-insights = insight_pipeline.build_insight_cards(reviews, annotations)
-health_report = monitoring_pipeline.generate_health_report(annotations)
-
-# Preprocess reviews into searchable chunks for the chatbot
-review_chunks = preprocessing_pipeline.build_chunks(reviews)
-
-# Embed and load chunks into the vector store for semantic search
-with st.spinner("Building semantic search index..."):
-    embed_and_upsert(vector_store, review_chunks, embed_fn=embed_small)
+  pipeline = Phase1Pipeline()
+  return pipeline.seed_sample_reviews(count=12)
 
 
-with st.sidebar:
-    st.markdown("### Filters")
-    selected_sources = st.multiselect(
-        "Source",
-        options=[review.source.value for review in reviews],
-        default=[review.source.value for review in reviews],
-    )
-    selected_categories = st.multiselect(
-        "Category",
-        options=sorted({annotation.category for annotation in annotations if annotation.category}),
-        default=sorted({annotation.category for annotation in annotations if annotation.category}),
-    )
-    st.slider("Confidence threshold", 0.0, 1.0, 0.6, 0.05)
-    if st.button("Generate dashboard HTML"):
-        output_path = write_dashboard("phase7_dashboard.html")
-        st.success(f"Dashboard written to {output_path}")
+def load_reviews_from_txt(path: Path) -> list[ReviewRecord]:
+    if not path.exists():
+        return []
 
-# Top navigation bar
-st.markdown(
-    """
-    <div class='topnav'>
-        <div style='display:flex; justify-content:space-between; align-items:center; font-size: 1rem;'>
-            <div><span style='color: #701EB2; font-size: 2rem; font-weight: 800; line-height: 1;'>Zepto Insights</span><span style='font-weight: 600;'> · Discovery Engine</span></div>
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+    lines = [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    if not lines:
+        return []
 
-# Main "Ask AI" section
-st.markdown("<div class='card'>", unsafe_allow_html=True)
-st.subheader("🤖 Ask the Discovery Engine")
-st.write("Ask a question about category trust, basket behavior, or review evidence. The AI will synthesize findings and provide evidence-backed answers.")
-search_query = st.text_input("", placeholder="e.g., What blocks category exploration?", label_visibility="collapsed")
-if st.button("Ask AI", use_container_width=True, type="primary"):
-    if search_query:
-        with st.spinner("Synthesizing answer from review evidence..."):
-            query_embedding = embed_small(search_query)
-            results = vector_store.query(query_embedding, top_k=10)
-            candidate_chunks = [record.metadata for record, _ in results]
-
-            if candidate_chunks:
-                reranked_chunks = preprocessing_pipeline.re_rank_with_large(search_query, candidate_chunks, top_k=5)
-                relevant_chunks = reranked_chunks[:5]
-            else:
-                relevant_chunks = []
-
-            st.info(f"Found {len(relevant_chunks)} relevant pieces of evidence for: \"{search_query}\"")
-
-            if not relevant_chunks:
-                st.warning("No matching evidence was found. Please try a broader question.")
-            else:
-                summary, highlights = build_chatbot_response(search_query, relevant_chunks)
-                st.markdown("### ✨ Answer")
-                st.write(summary)
-
-                if highlights:
-                    st.markdown("**Key takeaways**")
-                    for bullet in highlights:
-                        st.write(f"- {bullet}")
-
-                for chunk in relevant_chunks:
-                    review_id = chunk.get("review_id", "unknown")
-                    text = str(chunk.get("text", "")).strip()
-                    if text:
-                        st.caption(f"• {review_id}: {text}")
-    else:
-        st.warning("Please enter a question.")
-st.markdown("</div>", unsafe_allow_html=True)
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-# AI Prediction section
-st.markdown("### 🔮 AI Prediction")
-st.markdown(
-    """
-    <div style='border-top: 4px solid #701EB2; padding: 1.25rem 1rem 1rem; border-radius: 1rem; background: #ffffff; box-shadow: 0 10px 30px rgba(112, 30, 178, 0.08); margin-bottom: 1rem;'>
-        <div style='display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; flex-wrap:wrap;'>
-            <div>
-                <p style='font-size: 1rem; font-weight: 700; color: #701EB2; margin:0;'>Growth Focus</p>
-                <p style='margin:0.5rem 0 0; color:#4c4354; line-height:1.5;'>The AI has identified the strongest evidence-backed themes from reviews. These insights highlight top product and discovery risks or opportunities.</p>
-            </div>
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-if insights:
-    for insight in insights[:3]:
-        st.markdown(
-            f"""
-            <div style='background-color: #f6f2fa; padding: 1rem; border-radius: 1rem; border-left: 3px solid #701EB2; margin-bottom: 1rem;'>
-                <p style='font-weight: 600; margin: 0 0 0.5rem;'>{insight.title}</p>
-                <p style='font-size: 0.95rem; color: #4c4354; margin: 0 0 0.85rem;'>{insight.summary}</p>
-                <p style='font-size: 0.85rem; margin: 0;'>Confidence: <strong>{insight.confidence:.2f}</strong> | Evidence: <strong>{len(insight.evidence_ids)} reviews</strong></p>
-            </div>
-            """,
-            unsafe_allow_html=True,
+    reviews: list[ReviewRecord] = []
+    for index, line in enumerate(lines, start=1):
+        review_id = f"review-{index:03d}"
+        reviews.append(
+            ReviewRecord(
+                id=review_id,
+                source=SourceType.PDP_REVIEW,
+                source_url=str(path),
+                raw_text=line,
+                cleaned_text=line,
+                metadata={"ingestion": "reviews_txt", "synthetic": False},
+            )
         )
-else:
-    st.info("No AI prediction insights are available yet.")
+    return reviews
+
+
+def persist_review_records(reviews: list[ReviewRecord]) -> None:
+    RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    for review in reviews:
+        output_path = RAW_DATA_DIR / f"{review.id}.json"
+        output_path.write_text(review.model_dump_json(indent=2), encoding="utf-8")
+
+
+def build_theme_cards(insights: list[InsightCard]) -> str:
+    if not insights:
+        return "<p class='text-on-surface-variant'>No insights available yet.</p>"
+
+    items = []
+    for insight in insights:
+        source_mix = ", ".join(f"{k}: {v}" for k, v in insight.source_mix.items()) or "Mixed sources"
+        items.append(
+            f"""
+            <li class='rounded-3xl bg-surface-container p-5'>
+              <div class='flex items-center justify-between gap-3'>
+                <div>
+                  <p class='text-base font-semibold'>{insight.title}</p>
+                  <p class='mt-1 text-sm text-on-surface-variant'>{insight.summary}</p>
+                </div>
+                <span class='rounded-full-pill bg-primary px-4 py-2 text-xs font-semibold text-white'>
+                  {len(insight.evidence_ids)} evidence
+                </span>
+              </div>
+              <div class='mt-4 flex flex-wrap gap-2 text-xs text-on-surface-variant'>
+                <span class='rounded-full-pill bg-surface px-3 py-2'>confidence {insight.confidence:.2f}</span>
+                <span class='rounded-full-pill bg-surface px-3 py-2'>{source_mix}</span>
+                <span class='rounded-full-pill bg-surface px-3 py-2'>ids: {', '.join(insight.evidence_ids)}</span>
+              </div>
+            </li>
+            """
+        )
+    return "\n".join(items)
+
+
+def build_insight_cards_html(insights: list[InsightCard]) -> str:
+    if not insights:
+        return "<p class='text-on-surface-variant'>No insight cards generated.</p>"
+
+    cards = []
+    for index, insight in enumerate(insights, start=1):
+        cards.append(
+            f"""
+            <div class='rounded-[1.5rem] bg-surface-container p-6 border border-outline'>
+              <p class='text-xs uppercase tracking-[0.2em] text-on-surface-variant'>#{index}</p>
+              <h4 class='mt-3 text-xl font-semibold'>{insight.title}</h4>
+              <p class='mt-3 text-sm leading-7 text-on-surface-variant'>{insight.summary}</p>
+              <div class='mt-5 flex flex-wrap gap-2 text-xs text-on-surface-variant'>
+                <span class='rounded-full-pill bg-surface px-3 py-2'>confidence {insight.confidence:.2f}</span>
+                <span class='rounded-full-pill bg-surface px-3 py-2'>evidence {len(insight.evidence_ids)}</span>
+              </div>
+            </div>
+            """
+        )
+    return "\n".join(cards)
+
+
+def render_dashboard_html(reviews: list[ReviewRecord], insights: list[InsightCard]) -> str:
+    top_theme_cards = build_theme_cards(insights)
+    insight_cards_html = build_insight_cards_html(insights)
+    review_count = len(reviews)
+    categories = ", ".join(sorted({review.source.value for review in reviews})) or "None"
+
+    return f"""<!DOCTYPE html>
+<html lang='en'>
+<head>
+  <meta charset='UTF-8' />
+  <meta name='viewport' content='width=device-width, initial-scale=1.0' />
+  <title>Zepto Discovery Phase 7 Dashboard</title>
+  <script src='https://cdn.tailwindcss.com?plugins=forms,container-queries'></script>
+  <link href='https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap' rel='stylesheet' />
+  <link href='https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap' rel='stylesheet' />
+  <script id='tailwind-config'>
+    tailwind.config = {{
+      darkMode: 'class',
+      theme: {{
+        extend: {{
+          colors: {{
+            primary: '#510096',
+            'primary-container': '#7000cc',
+            secondary: '#705d00',
+            'secondary-container': '#fcd400',
+            tertiary: '#6e0056',
+            surface: '#fbf8ff',
+            'surface-container': '#f0ecf4',
+            'surface-container-high': '#eae7ee',
+            'surface-container-low': '#ffffff',
+            background: '#fbf8ff',
+            outline: '#7d7386',
+            'on-surface': '#1b1b20',
+            'on-surface-variant': '#4c4354',
+            'on-primary': '#ffffff',
+            'on-secondary-container': '#6e5c00',
+          }},
+          borderRadius: {{
+            DEFAULT: '0.5rem',
+            xl: '1rem',
+            '2xl': '1.5rem',
+          }},
+          fontFamily: {{
+            sans: ['Plus Jakarta Sans', 'sans-serif'],
+          }},
+        }},
+      }},
+    }}
+  </script>
+  <style>
+    body {{ font-family: 'Plus Jakarta Sans', sans-serif; background-color: #fbf8ff; }}
+    .material-symbols-outlined {{ font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }}
+    .halftone {{ background-image: radial-gradient(circle, rgba(112, 0, 204, 0.12) 1px, transparent 1px); background-size: 12px 12px; opacity: 0.08; }}
+    .insight-shadow {{ box-shadow: 0 24px 60px rgba(81, 0, 150, 0.08); }}
+    .rounded-full-pill {{ border-radius: 9999px; }}
+  </style>
+</head>
+<body class='min-h-screen text-on-surface bg-surface overflow-x-hidden'>
+  <div class='relative overflow-hidden'>
+    <div class='absolute inset-0 halftone pointer-events-none'></div>
+    <div class='relative z-10 max-w-[1600px] mx-auto px-6 py-8 lg:px-12'>
+      <header class='flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between'>
+        <div class='flex items-center gap-4'>
+          <div class='w-12 h-12 rounded-3xl bg-primary-container flex items-center justify-center text-white shadow-lg'>
+            <span class='material-symbols-outlined text-2xl'>bolt</span>
+          </div>
+          <div>
+            <p class='text-sm uppercase tracking-[0.3em] text-secondary'>Zepto Insights</p>
+            <h1 class='mt-2 text-3xl md:text-4xl font-extrabold'>Discovery Engine Phase 7 Dashboard</h1>
+          </div>
+        </div>
+        <div class='flex flex-col gap-2 sm:flex-row sm:items-center'>
+          <button class='inline-flex items-center justify-center gap-2 rounded-full-pill bg-secondary-container px-6 py-3 text-sm font-semibold text-on-secondary-container shadow-sm hover:opacity-95 transition'>Launch AI QA</button>
+          <button class='inline-flex items-center justify-center gap-2 rounded-full-pill border border-outline bg-white px-6 py-3 text-sm font-semibold text-on-surface hover:border-primary transition'>View docs</button>
+        </div>
+      </header>
+
+      <section class='mt-10 grid gap-6 xl:grid-cols-[1.5fr_1fr]'>
+        <div class='rounded-[2rem] bg-primary text-white p-10 relative overflow-hidden insight-shadow'>
+          <div class='absolute top-0 right-0 w-72 h-72 rounded-full bg-white/10 blur-3xl'></div>
+          <span class='inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-xs uppercase tracking-[0.2em] text-white/90'>Growth Focus</span>
+          <h2 class='mt-6 text-4xl font-black leading-tight'>AI predicts a 14% lift for premium coffee conversions</h2>
+          <p class='mt-4 max-w-2xl text-lg leading-8 text-white/90'>Discovery Engine uses actual review annotations and insight cards to surface growth opportunities and category action signals.</p>
+          <div class='mt-8 flex flex-col gap-3 sm:flex-row sm:items-center'>
+            <button class='rounded-3xl bg-secondary-container px-7 py-3 text-sm font-semibold text-on-secondary-container shadow-lg'>Review Expansion Plan</button>
+            <button class='rounded-3xl border border-white/20 bg-white/10 px-7 py-3 text-sm font-semibold text-white hover:bg-white/20 transition'>View Data Model</button>
+          </div>
+        </div>
+
+        <div class='rounded-[2rem] bg-surface-container-high p-8 insight-shadow border border-outline'>
+          <div class='flex items-start justify-between gap-4'>
+            <div>
+              <p class='text-sm uppercase tracking-[0.2em] text-on-surface-variant'>Live Dataset</p>
+              <h3 class='mt-2 text-5xl font-extrabold text-primary'>{review_count}</h3>
+              <p class='mt-2 text-sm text-on-surface-variant'>Reviews loaded from {categories}.</p>
+            </div>
+            <div class='flex h-16 w-16 items-center justify-center rounded-3xl bg-primary/10 text-primary'>
+              <span class='material-symbols-outlined text-3xl'>dataset</span>
+            </div>
+          </div>
+          <div class='mt-8 space-y-5'>
+            <div class='h-3 rounded-full bg-surface overflow-hidden'>
+              <div class='h-full w-64 bg-secondary-container'></div>
+            </div>
+            <div class='grid gap-3 text-sm text-on-surface-variant'>
+              <div class='flex items-center justify-between'><span>Live review sources</span><span class='font-semibold text-on-surface'>{categories}</span></div>
+              <div class='flex items-center justify-between'><span>Insight cards</span><span class='font-semibold text-on-surface'>{len(insights)}</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class='mt-10 grid gap-6 lg:grid-cols-2'>
+        <article class='rounded-[2rem] bg-white p-8 insight-shadow border border-outline'>
+          <div class='flex items-center justify-between gap-3 mb-6'>
+            <div>
+              <p class='text-sm uppercase tracking-[0.2em] text-secondary'>Theme discovery</p>
+              <h3 class='mt-2 text-2xl font-bold text-primary'>Top insight themes</h3>
+            </div>
+            <span class='material-symbols-outlined text-primary text-3xl'>insights</span>
+          </div>
+          <ul class='space-y-5'>
+            {top_theme_cards}
+          </ul>
+        </article>
+
+        <article class='rounded-[2rem] bg-white p-8 insight-shadow border border-outline'>
+          <div class='flex items-center justify-between gap-3 mb-6'>
+            <div>
+              <p class='text-sm uppercase tracking-[0.2em] text-secondary'>Insight cards</p>
+              <h3 class='mt-2 text-2xl font-bold text-primary'>Ranked evidence summaries</h3>
+            </div>
+            <span class='material-symbols-outlined text-secondary text-3xl'>article</span>
+          </div>
+          <div class='space-y-5'>
+            {insight_cards_html}
+          </div>
+        </article>
+      </section>
+
+      <section class='mt-10 rounded-[2rem] bg-white p-8 insight-shadow border border-outline'>
+        <div class='flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between'>
+          <div>
+            <p class='text-sm uppercase tracking-[0.2em] text-secondary'>Conversational QA</p>
+            <h2 class='mt-3 text-3xl font-bold text-primary'>Ask the discovery engine</h2>
+          </div>
+        </div>
+        <div class='mt-8 grid gap-5 lg:grid-cols-[2fr_1fr]'>
+          <div class='relative'>
+            <span class='material-symbols-outlined absolute left-5 top-1/2 -translate-y-1/2 text-primary text-2xl'>search</span>
+            <input class='w-full rounded-[1.5rem] border border-outline py-5 pl-16 pr-36 text-base outline-none transition focus:border-primary' placeholder='Ask a question about category trust, basket behavior, or review evidence...' />
+            <button class='absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center rounded-full-pill px-5 py-2 text-sm font-semibold text-white shadow-lg hover:opacity-95 transition' style='background-color: #665FEC;'>Ask AI</button>
+          </div>
+          <div class='grid gap-3'>
+            <button class='rounded-full-pill border border-outline bg-surface px-4 py-3 text-sm text-on-surface hover:bg-primary/5 transition'>What blocks category exploration?</button>
+            <button class='rounded-full-pill border border-outline bg-surface px-4 py-3 text-sm text-on-surface hover:bg-primary/5 transition'>Show evidence for repeat purchase</button>
+            <button class='rounded-full-pill border border-outline bg-surface px-4 py-3 text-sm text-on-surface hover:bg-primary/5 transition'>Summarize top growth themes</button>
+          </div>
+        </div>
+      </section>
+
+      <footer class='mt-10 flex flex-col gap-4 border-t border-outline pt-6 text-sm text-on-surface-variant sm:flex-row sm:items-center sm:justify-between'>
+        <p>© 2026 Zepto AI Discovery Engine. Proprietary Data.</p>
+        <div class='flex flex-wrap gap-4 items-center text-xs'>
+          <a href='#' class='hover:underline'>Privacy</a>
+          <a href='#' class='hover:underline'>Terms</a>
+          <a href='#' class='hover:underline'>Security</a>
+        </div>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>"""
+
+
+def write_dashboard(output_path: Path | str = None) -> Path:
+    output_path = Path(output_path or PROJECT_ROOT / "phase7_dashboard.html")
+    reviews = ensure_review_records()
+    annotations = Phase4AnnotationPipeline().annotate_reviews(reviews)
+    insights = Phase5InsightPipeline().build_insight_cards(reviews, annotations)
+    output_path.write_text(render_dashboard_html(reviews, insights), encoding="utf-8")
+    return output_path
+
+
+if __name__ == "__main__":
+    path = write_dashboard()
+    print(f"Rendered Phase 7 dashboard to {path}")
+
