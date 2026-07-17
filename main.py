@@ -6,7 +6,7 @@ from src.zepto_discovery.pipeline import Phase1Pipeline
 from src.zepto_discovery.annotation import Phase4AnnotationPipeline
 from src.zepto_discovery.audit import AuditDecision, Phase6AuditPipeline
 from src.zepto_discovery.ingestion import IngestionPipeline
-from src.zepto_discovery.models import ReviewRecord, SourceType
+from src.zepto_discovery.models import AnnotationRecord, ReviewRecord, SourceType
 from src.zepto_discovery.monitoring import Phase8MonitoringPipeline
 
 
@@ -53,7 +53,7 @@ def run_backend_pipeline() -> None:
     # Use the actual annotation pipeline to create realistic data.
     print("\n[Phases 3-5] Running annotation pipeline...")
     annotation_pipeline = Phase4AnnotationPipeline()
-    annotations = annotation_pipeline.annotate_reviews(mock_reviews_for_app)
+    annotations: list[AnnotationRecord] = annotation_pipeline.annotate_reviews(mock_reviews_for_app)
     print(f"✅ Generated {len(annotations)} annotations.")
 
     # === Phase 6: Human Audit and Validation ===
