@@ -167,8 +167,8 @@ with st.sidebar:
 st.markdown(
     """
     <div class='topnav'>
-        <div style='display:flex; justify-content:space-between; align-items:center;'>
-            <div><strong><span style='color: #701EB2;'>Zepto Insights</span></strong> · Discovery Engine</div>
+        <div style='display:flex; justify-content:space-between; align-items:center; font-size: 1rem;'>
+            <div><span style='color: #701EB2; font-size: 2rem; font-weight: 800; line-height: 1;'>Zepto Insights</span><span style='font-weight: 600;'> · Discovery Engine</span></div>
         </div>
     </div>
     """,
@@ -215,14 +215,4 @@ if st.button("Ask AI", use_container_width=True, type="primary"):
                         st.caption(f"• {review_id}: {text}")
     else:
         st.warning("Please enter a question.")
-st.markdown("</div>", unsafe_allow_html=True)
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-st.markdown("<div class='card'>", unsafe_allow_html=True)
-st.subheader("Monitoring summary")
-st.write(f"Low confidence annotations: {health_report.low_confidence_count}")
-st.write("Category distribution:")
-for category, count in health_report.category_distribution.items():
-    st.progress(min(1.0, count / max(1, len(reviews))), text=f"{category}: {count}")
 st.markdown("</div>", unsafe_allow_html=True)
