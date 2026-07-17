@@ -11,6 +11,64 @@ from src.zepto_discovery.vector_store import InMemoryVectorStore, embed_and_upse
 from src.zepto_discovery.embeddings import embed_small
 
 
+def build_chatbot_response(search_query: str, evidence_chunks: list[dict]) -> tuple[str, list[str]]:
+    """Convert retrieved evidence into a natural-language answer and highlight bullets."""
+    if not evidence_chunks:
+        return "I could not find enough matching review evidence for that question yet. Try a broader or more specific query.", []
+
+    normalized_query = search_query.lower().strip()
+    evidence_text = " ".join(str(chunk.get("text", "")).strip() for chunk in evidence_chunks if chunk.get("text"))
+    evidence_text = evidence_text.lower()
+
+    theme_patterns = {
+        "delivery speed": ["delivery", "fast", "slow", "late", "arrive"],
+        "product quality": ["quality", "damaged", "packaging", "fresh", "vegetables", "skincare"],
+        "trust and confidence": ["trust", "risk", "hesitant", "reliable", "confidence"],
+        "support experience": ["support", "respond", "issue", "customer"],
+        "selection and discovery": ["category", "exploration", "snacks", "basket", "recommend", "section"],
+    }
+
+    matched_themes = []
+    for theme, keywords in theme_patterns.items():
+        if any(keyword in evidence_text for keyword in keywords):
+            matched_themes.append(theme)
+
+    if not matched_themes:
+        matched_themes = ["review sentiment and experience"]
+
+    theme_summary = ", ".join(matched_themes[:3])
+    if len(matched_themes) > 3:
+        theme_summary += ", and more"
+
+    summary = (
+        f"Based on the latest reviews, customers are mainly discussing {theme_summary} in relation to your question about \"{search_query}\". "
+        "The overall pattern points to a mix of convenience gains and recurring friction around trust, quality, and support."
+    )
+
+    highlights = []
+    for chunk in evidence_chunks[:3]:
+        text = str(chunk.get("text", "")).strip()
+        if not text:
+            continue
+        if any(keyword in text.lower() for keyword in ["delivery", "fast", "slow", "late"]):
+            highlights.append("Delivery speed is a major part of the experience, with some reviewers praising convenience and others flagging delays.")
+        elif any(keyword in text.lower() for keyword in ["packaging", "damaged", "quality", "fresh", "vegetables", "skincare"]):
+            highlights.append("Product quality and packaging concerns are recurring, especially for personal care and fresh items.")
+        elif any(keyword in text.lower() for keyword in ["support", "respond", "issue", "customer"]):
+            highlights.append("Support responsiveness is mentioned as a pain point when issues arise.")
+        elif any(keyword in text.lower() for keyword in ["category", "exploration", "snacks", "basket", "recommend", "section"]):
+            highlights.append("Selection and discovery seem to influence whether shoppers feel comfortable exploring new categories.")
+        else:
+            highlights.append("The feedback reflects a blend of routine satisfaction and hesitation around trying new items.")
+        if len(highlights) >= 3:
+            break
+
+    if not highlights:
+        highlights = ["The evidence suggests the experience is mostly shaped by convenience, trust, and product quality."]
+
+    return summary, highlights
+
+
 st.set_page_config(page_title="Zepto Discovery Engine", page_icon="⚡", layout="wide")
 
 st.markdown(
@@ -136,10 +194,21 @@ if st.button("Ask AI", use_container_width=True, type="primary"):
             if not relevant_chunks:
                 st.warning("No matching evidence was found. Please try a broader question.")
             else:
+                summary, highlights = build_chatbot_response(search_query, relevant_chunks)
+                st.markdown("### ✨ Answer")
+                st.write(summary)
+
+                if highlights:
+                    st.markdown("**Key takeaways**")
+                    for bullet in highlights:
+                        st.write(f"- {bullet}")
+
+                st.markdown("**Supporting review signals**")
                 for chunk in relevant_chunks:
-                    with st.container(border=True):
-                        st.write(f"📄 **Evidence from Review ID:** `{chunk.get('review_id')}`")
-                        st.caption(chunk.get("text"))
+                    review_id = chunk.get("review_id", "unknown")
+                    text = str(chunk.get("text", "")).strip()
+                    if text:
+                        st.caption(f"• {review_id}: {text}")
     else:
         st.warning("Please enter a question.")
 st.markdown("</div>", unsafe_allow_html=True)
