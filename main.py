@@ -3,9 +3,10 @@ from __future__ import annotations
 import random
 
 from src.zepto_discovery.pipeline import Phase1Pipeline
+from src.zepto_discovery.annotation import Phase4AnnotationPipeline
 from src.zepto_discovery.audit import AuditDecision, Phase6AuditPipeline
 from src.zepto_discovery.ingestion import IngestionPipeline
-from src.zepto_discovery.models import AnnotationRecord, ReviewRecord, SourceType
+from src.zepto_discovery.models import ReviewRecord, SourceType
 from src.zepto_discovery.monitoring import Phase8MonitoringPipeline
 
 
@@ -48,26 +49,19 @@ def run_backend_pipeline() -> None:
     ingestion_pipeline.run()
     print("✅ Ingestion complete. Raw data saved to 'data/raw'.")
 
-    # === Phases 3-5: Mock Annotation Data ===
-    # In a real pipeline, this data would come from cleaning, chunking,
-    # and annotation steps (Phases 3, 4, 5). Here, we generate mock data.
-    print("\n[Phases 3-5] Generating mock annotation data...")
-    mock_annotations = [
-        AnnotationRecord(
-            review_id=f"review_{i}",
-            category=random.choice(["grocery", "personal_care", "delivery"]),
-            confidence=random.uniform(0.5, 1.0),
-        )
-        for i in range(100)
-    ]
-    print(f"✅ Generated {len(mock_annotations)} mock annotations.")
+    # === Phases 3-5: Annotation and Insight Generation ===
+    # Use the actual annotation pipeline to create realistic data.
+    print("\n[Phases 3-5] Running annotation pipeline...")
+    annotation_pipeline = Phase4AnnotationPipeline()
+    annotations = annotation_pipeline.annotate_reviews(mock_reviews_for_app)
+    print(f"✅ Generated {len(annotations)} annotations.")
 
     # === Phase 6: Human Audit and Validation ===
     print("\n[Phase 6] Running human audit and validation pipeline...")
     audit_pipeline = Phase6AuditPipeline()
 
     # 1. Sample annotations for review (e.g., 10% of the data)
-    sample_for_review = audit_pipeline.sample_for_audit(mock_annotations, sample_size=10)
+    sample_for_review = audit_pipeline.sample_for_audit(annotations, sample_size=10)
     print(f"🔍 Sampled {len(sample_for_review)} annotations for audit.")
 
     # 2. Simulate a human making a correction
@@ -81,9 +75,9 @@ def run_backend_pipeline() -> None:
             comments="User was talking about a non-grocery item.",
         )
         print(f"✍️  Simulating correction for annotation '{ann_to_correct.review_id}'.")
-        final_annotations = audit_pipeline.apply_audit_decisions(mock_annotations, [decision])
+        final_annotations = audit_pipeline.apply_audit_decisions(annotations, [decision])
     else:
-        final_annotations = mock_annotations
+        final_annotations = annotations
     print("✅ Audit process complete.")
 
     # === Phase 8: Monitoring and Trend Analysis ===
