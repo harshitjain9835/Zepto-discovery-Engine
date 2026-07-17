@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import os
+import json
+from pathlib import Path
+
+import requests
 import streamlit as st
 
 from src.zepto_discovery.annotation import Phase4AnnotationPipeline
@@ -67,6 +72,84 @@ def build_chatbot_response(search_query: str, evidence_chunks: list[dict]) -> tu
         highlights = ["The evidence suggests the experience is mostly shaped by convenience, trust, and product quality."]
 
     return summary, highlights
+
+
+def _load_reviews_txt_context(max_chars: int = 12000) -> str:
+    reviews_path = Path(__file__).resolve().parent / "reviews.txt"
+    if not reviews_path.exists():
+        return ""
+    text = reviews_path.read_text(encoding="utf-8").strip()
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars]
+
+
+def _call_groq_chat(search_query: str, evidence_chunks: list[dict], reviews_context: str) -> tuple[str, list[str]] | None:
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        return None
+
+    base_url = os.getenv("GROQ_BASE_URL", "https://api.groq.com").rstrip("/")
+    model = os.getenv("GROQ_CHAT_MODEL", "llama-3.1-8b-instant")
+    url = f"{base_url}/openai/v1/chat/completions"
+
+    evidence_lines = []
+    for chunk in evidence_chunks[:6]:
+        review_id = chunk.get("review_id", "unknown")
+        text = str(chunk.get("text", "")).strip()
+        if text:
+            evidence_lines.append(f"- [{review_id}] {text}")
+
+    user_prompt = (
+        f"User question: {search_query}\n\n"
+        f"Reviews.txt context:\n{reviews_context or 'No reviews.txt content available.'}\n\n"
+        f"Retrieved evidence:\n{"\n".join(evidence_lines) or '- No retrieved evidence'}\n\n"
+        "Return STRICT JSON only in this schema: "
+        "{\"summary\": \"string\", \"highlights\": [\"string\", \"string\", \"string\"]}. "
+        "Keep summary under 90 words and 2-3 concise highlights."
+    )
+
+    payload = {
+        "model": model,
+        "temperature": 0.2,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You are an analyst for Zepto customer review insights. "
+                    "Ground your answer in provided review context and evidence."
+                ),
+            },
+            {"role": "user", "content": user_prompt},
+        ],
+    }
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        resp = requests.post(url, json=payload, headers=headers, timeout=45)
+        resp.raise_for_status()
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"]
+    except Exception:
+        return None
+
+    try:
+        start = content.find("{")
+        end = content.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            return None
+        parsed = json.loads(content[start : end + 1])
+        summary = str(parsed.get("summary", "")).strip()
+        highlights = [str(x).strip() for x in parsed.get("highlights", []) if str(x).strip()]
+        if not summary:
+            return None
+        return summary, highlights[:3]
+    except Exception:
+        return None
 
 
 st.set_page_config(page_title="Zepto Discovery Engine", page_icon="⚡", layout="wide")
@@ -165,6 +248,7 @@ def run_chatbot_query(
     *,
     vector_store: InMemoryVectorStore,
     preprocessing_pipeline: PreprocessingPipeline,
+    reviews_context: str,
 ) -> None:
     with st.spinner("Synthesizing answer from review evidence..."):
         query_embedding = embed_small(search_query)
@@ -183,7 +267,11 @@ def run_chatbot_query(
             st.warning("No matching evidence was found. Please try a broader question.")
             return
 
-        summary, highlights = build_chatbot_response(search_query, relevant_chunks)
+        groq_response = _call_groq_chat(search_query, relevant_chunks, reviews_context)
+        if groq_response is not None:
+            summary, highlights = groq_response
+        else:
+            summary, highlights = build_chatbot_response(search_query, relevant_chunks)
         st.markdown("### ✨ Answer")
         st.write(summary)
 
@@ -199,6 +287,7 @@ def run_chatbot_query(
                 st.caption(f"• {review_id}: {text}")
 
 reviews = ensure_review_records()
+reviews_context = _load_reviews_txt_context()
 annotation_pipeline = Phase4AnnotationPipeline()
 insight_pipeline = Phase5InsightPipeline()
 monitoring_pipeline = Phase8MonitoringPipeline()
@@ -294,6 +383,7 @@ if quick_clicked_query:
         quick_clicked_query,
         vector_store=vector_store,
         preprocessing_pipeline=preprocessing_pipeline,
+        reviews_context=reviews_context,
     )
 elif ask_clicked:
     search_query = st.session_state.search_query_input.strip()
@@ -304,6 +394,7 @@ elif ask_clicked:
             search_query,
             vector_store=vector_store,
             preprocessing_pipeline=preprocessing_pipeline,
+            reviews_context=reviews_context,
         )
 st.markdown("</div>", unsafe_allow_html=True)
 
