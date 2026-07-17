@@ -6,7 +6,7 @@ from typing import Any
 
 from .annotation import Phase4AnnotationPipeline
 from .config import RAW_DATA_DIR, PROJECT_ROOT
-from .models import InsightCard, ReviewRecord, SourceType
+from .models import InsightCard, ReviewRecord
 from .pipeline import Phase1Pipeline
 from .insights import Phase5InsightPipeline
 
@@ -24,48 +24,10 @@ def load_review_records() -> list[ReviewRecord]:
 
 
 def ensure_review_records() -> list[ReviewRecord]:
-  txt_reviews = load_reviews_from_txt(PROJECT_ROOT.parent / "reviews.txt")
-  if txt_reviews and len(txt_reviews) >= 8:
-    persist_review_records(txt_reviews)
-    return txt_reviews
-
-  reviews = load_review_records()
-  if reviews and len(reviews) >= 8:
-    return reviews
-
-  pipeline = Phase1Pipeline()
-  return pipeline.seed_sample_reviews(count=12)
-
-
-def load_reviews_from_txt(path: Path) -> list[ReviewRecord]:
-    if not path.exists():
-        return []
-
-    lines = [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    if not lines:
-        return []
-
-    reviews: list[ReviewRecord] = []
-    for index, line in enumerate(lines, start=1):
-        review_id = f"review-{index:03d}"
-        reviews.append(
-            ReviewRecord(
-                id=review_id,
-                source=SourceType.PDP_REVIEW,
-                source_url=str(path),
-                raw_text=line,
-                cleaned_text=line,
-                metadata={"ingestion": "reviews_txt", "synthetic": False},
-            )
-        )
-    return reviews
-
-
-def persist_review_records(reviews: list[ReviewRecord]) -> None:
-    RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
-    for review in reviews:
-        output_path = RAW_DATA_DIR / f"{review.id}.json"
-        output_path.write_text(review.model_dump_json(indent=2), encoding="utf-8")
+    reviews = load_review_records()
+    if reviews:
+        return reviews
+    return Phase1Pipeline().seed_sample_reviews()
 
 
 def build_theme_cards(insights: list[InsightCard]) -> str:
@@ -175,9 +137,25 @@ def render_dashboard_html(reviews: list[ReviewRecord], insights: list[InsightCar
     .halftone {{ background-image: radial-gradient(circle, rgba(112, 0, 204, 0.12) 1px, transparent 1px); background-size: 12px 12px; opacity: 0.08; }}
     .insight-shadow {{ box-shadow: 0 24px 60px rgba(81, 0, 150, 0.08); }}
     .rounded-full-pill {{ border-radius: 9999px; }}
+    #search-loader {{
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(4px);
+      align-items: center;
+      justify-content: center;
+    }}
   </style>
 </head>
 <body class='min-h-screen text-on-surface bg-surface overflow-x-hidden'>
+  <div id='search-loader'>
+    <div class='flex flex-col items-center'>
+      <div class='w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin'></div>
+      <p class='mt-4 text-base font-semibold text-primary'>AI is fetching fresh insights...</p>
+    </div>
+  </div>
   <div class='relative overflow-hidden'>
     <div class='absolute inset-0 halftone pointer-events-none'></div>
     <div class='relative z-10 max-w-[1600px] mx-auto px-6 py-8 lg:px-12'>
@@ -266,17 +244,17 @@ def render_dashboard_html(reviews: list[ReviewRecord], insights: list[InsightCar
             <p class='text-sm uppercase tracking-[0.2em] text-secondary'>Conversational QA</p>
             <h2 class='mt-3 text-3xl font-bold text-primary'>Ask the discovery engine</h2>
           </div>
+          <button class='inline-flex items-center gap-2 rounded-3xl bg-primary px-6 py-3 text-sm font-semibold text-white shadow-lg hover:opacity-95 transition' id='ask-ai-btn' type='button'>Ask AI</button>
         </div>
         <div class='mt-8 grid gap-5 lg:grid-cols-[2fr_1fr]'>
           <div class='relative'>
             <span class='material-symbols-outlined absolute left-5 top-1/2 -translate-y-1/2 text-primary text-2xl'>search</span>
-            <input class='w-full rounded-[1.5rem] border border-outline py-5 pl-16 pr-36 text-base outline-none transition focus:border-primary' placeholder='Ask a question about category trust, basket behavior, or review evidence...' />
-            <button class='absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center rounded-full-pill px-5 py-2 text-sm font-semibold text-white shadow-lg hover:opacity-95 transition' style='background-color: #665FEC;'>Ask AI</button>
+            <input class='w-full rounded-[1.5rem] border border-outline px-16 py-5 text-base outline-none transition focus:border-primary' id='ai-search' placeholder='Ask a question about category trust, basket behavior, or review evidence...' />
           </div>
           <div class='grid gap-3'>
-            <button class='rounded-full-pill border border-outline bg-surface px-4 py-3 text-sm text-on-surface hover:bg-primary/5 transition'>What blocks category exploration?</button>
-            <button class='rounded-full-pill border border-outline bg-surface px-4 py-3 text-sm text-on-surface hover:bg-primary/5 transition'>Show evidence for repeat purchase</button>
-            <button class='rounded-full-pill border border-outline bg-surface px-4 py-3 text-sm text-on-surface hover:bg-primary/5 transition'>Summarize top growth themes</button>
+            <button class='rounded-full-pill border border-outline bg-surface px-4 py-3 text-sm text-on-surface hover:bg-primary/5 transition quick-query' data-query='What blocks category exploration?' type='button'>What blocks category exploration?</button>
+            <button class='rounded-full-pill border border-outline bg-surface px-4 py-3 text-sm text-on-surface hover:bg-primary/5 transition quick-query' data-query='Show evidence for repeat purchase' type='button'>Show evidence for repeat purchase</button>
+            <button class='rounded-full-pill border border-outline bg-surface px-4 py-3 text-sm text-on-surface hover:bg-primary/5 transition quick-query' data-query='Summarize top growth themes' type='button'>Summarize top growth themes</button>
           </div>
         </div>
       </section>
@@ -291,6 +269,49 @@ def render_dashboard_html(reviews: list[ReviewRecord], insights: list[InsightCar
       </footer>
     </div>
   </div>
+  <script>
+    const searchInput = document.getElementById('ai-search');
+    const askAiButton = document.getElementById('ask-ai-btn');
+    const loader = document.getElementById('search-loader');
+    const quickQueryButtons = document.querySelectorAll('.quick-query');
+
+    function triggerChatSearch() {
+      if (!searchInput || !loader) return;
+      const query = searchInput.value.trim();
+      if (!query) {
+        searchInput.focus();
+        return;
+      }
+
+      loader.style.display = 'flex';
+      setTimeout(() => {
+        loader.style.display = 'none';
+      }, 1200);
+    }
+
+    if (askAiButton) {
+      askAiButton.addEventListener('click', triggerChatSearch);
+    }
+
+    if (searchInput) {
+      searchInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          triggerChatSearch();
+        }
+      });
+    }
+
+    quickQueryButtons.forEach((button) => {
+      button.addEventListener('click', function () {
+        const query = this.getAttribute('data-query') || '';
+        if (searchInput) {
+          searchInput.value = query;
+        }
+        triggerChatSearch();
+      });
+    });
+  </script>
 </body>
 </html>"""
 
@@ -307,4 +328,3 @@ def write_dashboard(output_path: Path | str = None) -> Path:
 if __name__ == "__main__":
     path = write_dashboard()
     print(f"Rendered Phase 7 dashboard to {path}")
-
