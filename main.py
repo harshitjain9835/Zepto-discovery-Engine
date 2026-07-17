@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import random
 
+from src.zepto_discovery.pipeline import Phase1Pipeline
 from src.zepto_discovery.audit import AuditDecision, Phase6AuditPipeline
 from src.zepto_discovery.ingestion import IngestionPipeline
-from src.zepto_discovery.models import AnnotationRecord
+from src.zepto_discovery.models import AnnotationRecord, ReviewRecord, SourceType
 from src.zepto_discovery.monitoring import Phase8MonitoringPipeline
 
 
@@ -12,8 +13,34 @@ def run_backend_pipeline() -> None:
     """
     Executes the end-to-end Zepto Discovery Engine pipeline.
     This script simulates the flow from data ingestion to monitoring.
+    It also generates a larger set of mock reviews for the frontend to use.
     """
     print("🚀 Starting Zepto Discovery Engine Backend Pipeline...")
+
+    # === Phase 1: Generate a larger mock review dataset for the frontend ===
+    print("\n[Phase 1] Generating mock review data for frontend app...")
+    p1_pipeline = Phase1Pipeline()
+    mock_reviews_for_app = [
+        ReviewRecord(
+            id=f"review_{i:03d}",
+            source=random.choice(list(SourceType)),
+            source_url="https://example.com/mock",
+            raw_text=random.choice([
+                "Delivery was fast but I only buy groceries again because I trust the routine.",
+                "I avoid buying personal care because packaging quality feels risky.",
+                "The app is great for repeat orders of milk and bread.",
+                "Why are there limits on how many snacks I can buy? It's frustrating.",
+                "Tried ordering baby products for the first time, but the box was damaged.",
+                "Customer support took forever to respond to my issue with expired yogurt.",
+                "Zepto is super fast for late-night ice cream cravings!",
+                "I wish I could trust the quality of fresh vegetables more.",
+                "The Supermall section is interesting, but I'm hesitant to try it.",
+                "My first order was perfect, will definitely use it again for my weekly groceries.",
+            ]),
+        ) for i in range(100)
+    ]
+    p1_pipeline.save_reviews(mock_reviews_for_app)
+    print(f"✅ Saved {len(mock_reviews_for_app)} mock reviews to 'data/raw' for the app.")
 
     # === Phase 2: Data Ingestion ===
     print("\n[Phase 2] Running data ingestion pipeline...")
