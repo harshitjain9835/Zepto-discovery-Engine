@@ -121,20 +121,25 @@ search_query = st.text_input("", placeholder="e.g., What blocks category explora
 if st.button("Ask AI", use_container_width=True, type="primary"):
     if search_query:
         with st.spinner("Synthesizing answer from review evidence..."):
-            # 1. Embed the user's query
             query_embedding = embed_small(search_query)
+            results = vector_store.query(query_embedding, top_k=10)
+            candidate_chunks = [record.metadata for record, _ in results]
 
-            # 2. Query the vector store to find the most relevant chunks
-            results = vector_store.query(query_embedding, top_k=3)
-            relevant_chunks = [record.metadata for record, score in results]
+            if candidate_chunks:
+                reranked_chunks = preprocessing_pipeline.re_rank_with_large(search_query, candidate_chunks, top_k=5)
+                relevant_chunks = reranked_chunks[:5]
+            else:
+                relevant_chunks = []
 
             st.info(f"Found {len(relevant_chunks)} relevant pieces of evidence for: \"{search_query}\"")
 
-            # Display the findings
-            for chunk in relevant_chunks:
-                with st.container(border=True):
-                    st.write(f"📄 **Evidence from Review ID:** `{chunk.get('review_id')}`")
-                    st.caption(chunk.get("text"))
+            if not relevant_chunks:
+                st.warning("No matching evidence was found. Please try a broader question.")
+            else:
+                for chunk in relevant_chunks:
+                    with st.container(border=True):
+                        st.write(f"📄 **Evidence from Review ID:** `{chunk.get('review_id')}`")
+                        st.caption(chunk.get("text"))
     else:
         st.warning("Please enter a question.")
 st.markdown("</div>", unsafe_allow_html=True)
