@@ -246,4 +246,6 @@ st.markdown(
             for insight in insights[:1] # Show the top insight
         ])}
     </div>
-    """, unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True,
+)
