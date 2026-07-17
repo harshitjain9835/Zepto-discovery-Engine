@@ -7,6 +7,8 @@ from src.zepto_discovery.dashboard import ensure_review_records, write_dashboard
 from src.zepto_discovery.insights import Phase5InsightPipeline
 from src.zepto_discovery.monitoring import Phase8MonitoringPipeline
 from src.zepto_discovery.preprocessing import PreprocessingPipeline
+from src.zepto_discovery.vector_store import InMemoryVectorStore, embed_and_upsert
+from src.zepto_discovery.embeddings import embed_small
 
 
 st.set_page_config(page_title="Zepto Discovery Engine", page_icon="⚡", layout="wide")
@@ -68,6 +70,7 @@ annotation_pipeline = Phase4AnnotationPipeline()
 insight_pipeline = Phase5InsightPipeline()
 monitoring_pipeline = Phase8MonitoringPipeline()
 preprocessing_pipeline = PreprocessingPipeline()
+vector_store = InMemoryVectorStore()
 
 annotations = annotation_pipeline.annotate_reviews(reviews)
 insights = insight_pipeline.build_insight_cards(reviews, annotations)
@@ -75,6 +78,10 @@ health_report = monitoring_pipeline.generate_health_report(annotations)
 
 # Preprocess reviews into searchable chunks for the chatbot
 review_chunks = preprocessing_pipeline.build_chunks(reviews)
+
+# Embed and load chunks into the vector store for semantic search
+with st.spinner("Building semantic search index..."):
+    embed_and_upsert(vector_store, review_chunks, embed_fn=embed_small)
 
 
 with st.sidebar:
@@ -114,16 +121,20 @@ search_query = st.text_input("", placeholder="e.g., What blocks category explora
 if st.button("Ask AI", use_container_width=True, type="primary"):
     if search_query:
         with st.spinner("Synthesizing answer from review evidence..."):
-            # Find relevant chunks using the preprocessing pipeline's search simulation
-            relevant_chunks = preprocessing_pipeline.re_rank_with_large(search_query, review_chunks, top_k=3)
+            # 1. Embed the user's query
+            query_embedding = embed_small(search_query)
+
+            # 2. Query the vector store to find the most relevant chunks
+            results = vector_store.query(query_embedding, top_k=3)
+            relevant_chunks = [record.metadata for record, score in results]
 
             st.info(f"Found {len(relevant_chunks)} relevant pieces of evidence for: \"{search_query}\"")
 
             # Display the findings
             for chunk in relevant_chunks:
                 with st.container(border=True):
-                    st.write(f"📄 **Evidence from Review ID:** `{chunk['review_id']}`")
-                    st.caption(chunk["text"])
+                    st.write(f"📄 **Evidence from Review ID:** `{chunk.get('review_id')}`")
+                    st.caption(chunk.get("text"))
     else:
         st.warning("Please enter a question.")
 st.markdown("</div>", unsafe_allow_html=True)
