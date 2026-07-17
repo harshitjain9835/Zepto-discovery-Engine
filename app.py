@@ -122,6 +122,12 @@ st.markdown(
         color: white;
         background-color: #701EB2;
     }
+    /* Custom style for the search input to remove right-side border radius */
+    div[data-testid="stTextInput"] > div {
+        border-top-right-radius: 0;
+        border-bottom-right-radius: 0;
+        border-right: none;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -216,3 +222,28 @@ if st.button("Ask AI", use_container_width=True, type="primary"):
     else:
         st.warning("Please enter a question.")
 st.markdown("</div>", unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+# AI Prediction section
+st.markdown(
+    f"""
+    <div class='card' style='border-top: 4px solid #701EB2;'>
+        <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;'>
+            <h3 style='font-size: 1.25rem; font-weight: 700; color: #701EB2;'>🔮 AI Prediction</h3>
+            <span style='background-color: #FFA723; color: black; font-weight: 600; padding: 0.25rem 0.75rem; border-radius: 999px; font-size: 0.75rem;'>Growth Focus</span>
+        </div>
+        <p style='margin-bottom: 1.5rem;'>The AI has identified the following themes as high-demand or high-friction areas. These represent opportunities for growth interventions.</p>
+        
+        {''.join([
+            f"""
+            <div style='background-color: #f6f2fa; padding: 1rem; border-radius: 1rem; border-left: 3px solid #701EB2;'>
+                <p style='font-weight: 600;'>{insight.title}</p>
+                <p style='font-size: 0.9rem; color: #4c4354; margin-top: 0.25rem;'>{insight.summary}</p>
+                <p style='font-size: 0.8rem; margin-top: 0.75rem;'>Confidence: <strong>{insight.confidence:.2f}</strong> | Evidence: <strong>{len(insight.evidence_ids)} reviews</strong></p>
+            </div>
+            """
+            for insight in insights[:1] # Show the top insight
+        ])}
+    </div>
+    """, unsafe_allow_html=True)
