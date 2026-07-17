@@ -114,24 +114,89 @@ st.markdown(
     }
     .search-shell {
         border: 1px solid #e4e1e9;
-        border-radius: 999px;
-        padding: 0.5rem 0.8rem;
+        border-radius: 1rem;
+        padding: 0.75rem;
         background: #f6f2fa;
     }
-    button[data-testid="stButton"] > div[data-testid="stMarkdownContainer"] > p {
-        color: white;
-        background-color: #701EB2;
+    .ask-ai-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 0.35rem;
     }
-    /* Custom style for the search input to remove right-side border radius */
-    div[data-testid="stTextInput"] > div {
-        border-top-right-radius: 0;
-        border-bottom-right-radius: 0;
-        border-right: none;
+    .ask-ai-title {
+        color: #1b1b20;
+        font-size: 1.25rem;
+        font-weight: 700;
+    }
+    .ask-ai-powered {
+        color: #4c4354;
+        font-size: 0.9rem;
+    }
+    .quick-label {
+        margin-top: 0.85rem;
+        margin-bottom: 0.25rem;
+        color: #4c4354;
+        font-size: 0.9rem;
+        font-weight: 600;
+    }
+    div.stButton > button[kind="primary"],
+    div[data-testid="stButton"] > button[kind="primary"] {
+        background-color: #665FEC;
+        border-color: #665FEC;
+        border-radius: 0.85rem;
+        color: #ffffff;
+        font-weight: 700;
+    }
+    div.stButton > button[kind="primary"]:hover,
+    div[data-testid="stButton"] > button[kind="primary"]:hover {
+        background-color: #5a54d8;
+        border-color: #5a54d8;
     }
     </style>
     """,
     unsafe_allow_html=True,
 )
+
+
+def run_chatbot_query(
+    search_query: str,
+    *,
+    vector_store: InMemoryVectorStore,
+    preprocessing_pipeline: PreprocessingPipeline,
+) -> None:
+    with st.spinner("Synthesizing answer from review evidence..."):
+        query_embedding = embed_small(search_query)
+        results = vector_store.query(query_embedding, top_k=10)
+        candidate_chunks = [record.metadata for record, _ in results]
+
+        if candidate_chunks:
+            reranked_chunks = preprocessing_pipeline.re_rank_with_large(search_query, candidate_chunks, top_k=5)
+            relevant_chunks = reranked_chunks[:5]
+        else:
+            relevant_chunks = []
+
+        st.info(f"Found {len(relevant_chunks)} relevant pieces of evidence for: \"{search_query}\"")
+
+        if not relevant_chunks:
+            st.warning("No matching evidence was found. Please try a broader question.")
+            return
+
+        summary, highlights = build_chatbot_response(search_query, relevant_chunks)
+        st.markdown("### ✨ Answer")
+        st.write(summary)
+
+        if highlights:
+            st.markdown("**Key takeaways**")
+            for bullet in highlights:
+                st.write(f"- {bullet}")
+
+        for chunk in relevant_chunks:
+            review_id = chunk.get("review_id", "unknown")
+            text = str(chunk.get("text", "")).strip()
+            if text:
+                st.caption(f"• {review_id}: {text}")
 
 reviews = ensure_review_records()
 annotation_pipeline = Phase4AnnotationPipeline()
@@ -183,43 +248,63 @@ st.markdown(
 
 # Main "Ask AI" section
 st.markdown("<div class='card'>", unsafe_allow_html=True)
-st.subheader("🤖 Ask the Discovery Engine")
+st.markdown(
+    """
+    <div class='ask-ai-meta'>
+        <div class='ask-ai-title'>✨ Discovery Engine</div>
+        <div class='ask-ai-powered'>Powered by Zepto Intelligence</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 st.write("Ask a question about category trust, basket behavior, or review evidence. The AI will synthesize findings and provide evidence-backed answers.")
-search_query = st.text_input("", placeholder="e.g., What blocks category exploration?", label_visibility="collapsed")
-if st.button("Ask AI", use_container_width=True, type="primary"):
-    if search_query:
-        with st.spinner("Synthesizing answer from review evidence..."):
-            query_embedding = embed_small(search_query)
-            results = vector_store.query(query_embedding, top_k=10)
-            candidate_chunks = [record.metadata for record, _ in results]
 
-            if candidate_chunks:
-                reranked_chunks = preprocessing_pipeline.re_rank_with_large(search_query, candidate_chunks, top_k=5)
-                relevant_chunks = reranked_chunks[:5]
-            else:
-                relevant_chunks = []
+if "search_query_input" not in st.session_state:
+    st.session_state.search_query_input = ""
 
-            st.info(f"Found {len(relevant_chunks)} relevant pieces of evidence for: \"{search_query}\"")
+search_col, ask_col = st.columns([6, 1.4])
+with search_col:
+    st.text_input(
+        "",
+        key="search_query_input",
+        placeholder="Describe what you want to discover... e.g., Analyze beverage trends in Indiranagar",
+        label_visibility="collapsed",
+    )
+with ask_col:
+    ask_clicked = st.button("Ask AI", use_container_width=True, type="primary", key="ask_ai_btn")
 
-            if not relevant_chunks:
-                st.warning("No matching evidence was found. Please try a broader question.")
-            else:
-                summary, highlights = build_chatbot_response(search_query, relevant_chunks)
-                st.markdown("### ✨ Answer")
-                st.write(summary)
+st.markdown("<div class='quick-label'>Quick insights:</div>", unsafe_allow_html=True)
+quick_queries = [
+    "Why are dairy sales peaking in Indiranagar?",
+    "Show me top 5 growing categories",
+    "Forecast weekend stock needs for Zone-B4",
+    "Customer retention for premium fruits",
+]
 
-                if highlights:
-                    st.markdown("**Key takeaways**")
-                    for bullet in highlights:
-                        st.write(f"- {bullet}")
+quick_cols = st.columns(2)
+quick_clicked_query = ""
+for index, query in enumerate(quick_queries):
+    with quick_cols[index % 2]:
+        if st.button(query, key=f"quick_query_{index}", use_container_width=True):
+            quick_clicked_query = query
 
-                for chunk in relevant_chunks:
-                    review_id = chunk.get("review_id", "unknown")
-                    text = str(chunk.get("text", "")).strip()
-                    if text:
-                        st.caption(f"• {review_id}: {text}")
-    else:
+if quick_clicked_query:
+    st.session_state.search_query_input = quick_clicked_query
+    run_chatbot_query(
+        quick_clicked_query,
+        vector_store=vector_store,
+        preprocessing_pipeline=preprocessing_pipeline,
+    )
+elif ask_clicked:
+    search_query = st.session_state.search_query_input.strip()
+    if not search_query:
         st.warning("Please enter a question.")
+    else:
+        run_chatbot_query(
+            search_query,
+            vector_store=vector_store,
+            preprocessing_pipeline=preprocessing_pipeline,
+        )
 st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
