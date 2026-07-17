@@ -25,9 +25,11 @@ def load_review_records() -> list[ReviewRecord]:
 
 def ensure_review_records() -> list[ReviewRecord]:
     reviews = load_review_records()
-    if reviews:
+    if reviews and len(reviews) >= 8:
         return reviews
-    return Phase1Pipeline().seed_sample_reviews()
+
+    pipeline = Phase1Pipeline()
+    return pipeline.seed_sample_reviews(count=12)
 
 
 def build_theme_cards(insights: list[InsightCard]) -> str:
