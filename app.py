@@ -118,6 +118,10 @@ st.markdown(
         padding: 0.5rem 0.8rem;
         background: #f6f2fa;
     }
+    button[data-testid="stButton"] > div[data-testid="stMarkdownContainer"] > p {
+        color: white;
+        background-color: #701EB2;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -164,7 +168,7 @@ st.markdown(
     """
     <div class='topnav'>
         <div style='display:flex; justify-content:space-between; align-items:center;'>
-            <div><strong>Zepto Insights</strong> · Discovery Engine</div>
+            <div><strong><span style='color: #701EB2;'>Zepto Insights</span></strong> · Discovery Engine</div>
         </div>
     </div>
     """,
@@ -212,38 +216,6 @@ if st.button("Ask AI", use_container_width=True, type="primary"):
     else:
         st.warning("Please enter a question.")
 st.markdown("</div>", unsafe_allow_html=True)
-
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.metric("Reviews loaded", len(reviews))
-with col2:
-    st.metric("Insight cards", len(insights))
-with col3:
-    st.metric("Avg confidence", f"{health_report.average_confidence:.2f}")
-
-left, right = st.columns([1.2, 1])
-with left:
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.subheader("Top insight themes")
-    for insight in insights:
-        st.markdown(f"### {insight.title}")
-        st.write(insight.summary)
-        progress = max(0.05, min(insight.confidence, 1.0))
-        st.progress(progress, text=f"Confidence {insight.confidence:.2f}")
-        st.caption(f"Evidence IDs: {', '.join(insight.evidence_ids)}")
-        st.divider()
-    st.markdown("</div>", unsafe_allow_html=True)
-
-with right:
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.subheader("Recent review annotations")
-    for review, annotation in zip(reviews[:6], annotations[:6]):
-        st.markdown(f"**{review.id}** — {review.source.value}")
-        st.write(annotation.reason)
-        st.write(f"Category: {annotation.category} | Sentiment: {annotation.sentiment} | Confidence: {annotation.confidence:.2f}")
-        st.caption(f"Evidence: {', '.join(annotation.evidence)}")
-        st.divider()
-    st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
