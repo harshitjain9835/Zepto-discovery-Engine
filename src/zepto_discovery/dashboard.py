@@ -175,25 +175,9 @@ def render_dashboard_html(reviews: list[ReviewRecord], insights: list[InsightCar
     .halftone {{ background-image: radial-gradient(circle, rgba(112, 0, 204, 0.12) 1px, transparent 1px); background-size: 12px 12px; opacity: 0.08; }}
     .insight-shadow {{ box-shadow: 0 24px 60px rgba(81, 0, 150, 0.08); }}
     .rounded-full-pill {{ border-radius: 9999px; }}
-    #search-loader {{
-      display: none;
-      position: fixed;
-      inset: 0;
-      z-index: 50;
-      background: rgba(255, 255, 255, 0.9);
-      backdrop-filter: blur(4px);
-      align-items: center;
-      justify-content: center;
-    }}
   </style>
 </head>
 <body class='min-h-screen text-on-surface bg-surface overflow-x-hidden'>
-  <div id='search-loader'>
-    <div class='flex flex-col items-center'>
-      <div class='w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin'></div>
-      <p class='mt-4 text-base font-semibold text-primary'>AI is fetching fresh insights...</p>
-    </div>
-  </div>
   <div class='relative overflow-hidden'>
     <div class='absolute inset-0 halftone pointer-events-none'></div>
     <div class='relative z-10 max-w-[1600px] mx-auto px-6 py-8 lg:px-12'>
@@ -276,26 +260,23 @@ def render_dashboard_html(reviews: list[ReviewRecord], insights: list[InsightCar
         </article>
       </section>
 
-      <section class='mt-10 bg-surface border-t border-outline px-6 py-8 rounded-[2rem]'>
-        <div class='max-w-5xl mx-auto space-y-6'>
-          <div class='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
-            <div class='flex items-center gap-3'>
-              <span class='material-symbols-outlined text-primary' style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
-              <h3 class='text-2xl font-bold text-on-surface'>Discovery Engine</h3>
-            </div>
-            <span class='text-sm text-on-surface-variant'>Powered by Zepto Intelligence</span>
+      <section class='mt-10 rounded-[2rem] bg-white p-8 insight-shadow border border-outline'>
+        <div class='flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between'>
+          <div>
+            <p class='text-sm uppercase tracking-[0.2em] text-secondary'>Conversational QA</p>
+            <h2 class='mt-3 text-3xl font-bold text-primary'>Ask the discovery engine</h2>
           </div>
-          <div class='relative group'>
-            <input class='w-full pl-14 pr-32 py-5 bg-surface-container-low border-2 border-outline rounded-2xl focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all text-base placeholder:text-on-surface-variant' id='ai-search' placeholder="Describe what you want to discover... e.g., 'Analyze beverage trends in Indiranagar'" type='text'/>
+        </div>
+        <div class='mt-8 grid gap-5 lg:grid-cols-[2fr_1fr]'>
+          <div class='relative'>
             <span class='material-symbols-outlined absolute left-5 top-1/2 -translate-y-1/2 text-primary text-2xl'>search</span>
-            <button class='absolute right-3 top-1/2 -translate-y-1/2 bg-primary text-white font-bold px-6 py-2.5 rounded-xl hover:opacity-90 transition-all flex items-center gap-2 shadow-md' id='ask-ai-btn' type='button'>Ask AI</button>
+            <input class='w-full rounded-[1.5rem] border border-outline py-5 pl-16 pr-36 text-base outline-none transition focus:border-primary' placeholder='Ask a question about category trust, basket behavior, or review evidence...' />
+            <button class='absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center rounded-full-pill px-5 py-2 text-sm font-semibold text-white shadow-lg hover:opacity-95 transition' style='background-color: #665FEC;'>Ask AI</button>
           </div>
-          <div class='flex flex-wrap items-center gap-3'>
-            <span class='text-sm text-on-surface-variant mr-2'>Quick insights:</span>
-            <button class='px-4 py-2 bg-surface-container-high hover:bg-primary/10 hover:text-primary rounded-full-pill text-sm transition-all border border-transparent hover:border-primary/20 quick-query' data-query='Why are dairy sales peaking in Indiranagar?' type='button'>"Why are dairy sales peaking in Indiranagar?"</button>
-            <button class='px-4 py-2 bg-surface-container-high hover:bg-primary/10 hover:text-primary rounded-full-pill text-sm transition-all border border-transparent hover:border-primary/20 quick-query' data-query='Show me top 5 growing categories' type='button'>"Show me top 5 growing categories"</button>
-            <button class='px-4 py-2 bg-surface-container-high hover:bg-primary/10 hover:text-primary rounded-full-pill text-sm transition-all border border-transparent hover:border-primary/20 quick-query' data-query='Forecast weekend stock needs for Zone-B4' type='button'>"Forecast weekend stock needs for Zone-B4"</button>
-            <button class='px-4 py-2 bg-surface-container-high hover:bg-primary/10 hover:text-primary rounded-full-pill text-sm transition-all border border-transparent hover:border-primary/20 quick-query' data-query='Customer retention for premium fruits' type='button'>"Customer retention for premium fruits"</button>
+          <div class='grid gap-3'>
+            <button class='rounded-full-pill border border-outline bg-surface px-4 py-3 text-sm text-on-surface hover:bg-primary/5 transition'>What blocks category exploration?</button>
+            <button class='rounded-full-pill border border-outline bg-surface px-4 py-3 text-sm text-on-surface hover:bg-primary/5 transition'>Show evidence for repeat purchase</button>
+            <button class='rounded-full-pill border border-outline bg-surface px-4 py-3 text-sm text-on-surface hover:bg-primary/5 transition'>Summarize top growth themes</button>
           </div>
         </div>
       </section>
@@ -310,48 +291,6 @@ def render_dashboard_html(reviews: list[ReviewRecord], insights: list[InsightCar
       </footer>
     </div>
   </div>
-  <script>
-    const searchInput = document.getElementById('ai-search');
-    const askAiButton = document.getElementById('ask-ai-btn');
-    const loader = document.getElementById('search-loader');
-    const quickQueryButtons = document.querySelectorAll('.quick-query');
-
-    function triggerChatSearch() {
-      if (!searchInput || !loader) return;
-      const query = searchInput.value.trim();
-      if (!query) {
-        searchInput.focus();
-        return;
-      }
-      loader.style.display = 'flex';
-      setTimeout(() => {
-        loader.style.display = 'none';
-      }, 1200);
-    }
-
-    if (searchInput) {
-      searchInput.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          triggerChatSearch();
-        }
-      });
-    }
-
-    if (askAiButton) {
-      askAiButton.addEventListener('click', triggerChatSearch);
-    }
-
-    quickQueryButtons.forEach((button) => {
-      button.addEventListener('click', function () {
-        const query = this.getAttribute('data-query') || '';
-        if (searchInput) {
-          searchInput.value = query;
-        }
-        triggerChatSearch();
-      });
-    });
-  </script>
 </body>
 </html>"""
 
