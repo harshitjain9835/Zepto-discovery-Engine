@@ -275,42 +275,42 @@ def render_dashboard_html(reviews: list[ReviewRecord], insights: list[InsightCar
     const loader = document.getElementById('search-loader');
     const quickQueryButtons = document.querySelectorAll('.quick-query');
 
-    function triggerChatSearch() {
+    function triggerChatSearch() {{
       if (!searchInput || !loader) return;
       const query = searchInput.value.trim();
-      if (!query) {
+      if (!query) {{
         searchInput.focus();
         return;
-      }
+      }}
 
       loader.style.display = 'flex';
-      setTimeout(() => {
+      setTimeout(() => {{
         loader.style.display = 'none';
-      }, 1200);
-    }
+      }}, 1200);
+    }}
 
-    if (askAiButton) {
+    if (askAiButton) {{
       askAiButton.addEventListener('click', triggerChatSearch);
-    }
+    }}
 
-    if (searchInput) {
-      searchInput.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter') {
+    if (searchInput) {{
+      searchInput.addEventListener('keydown', function (e) {{
+        if (e.key === 'Enter') {{
           e.preventDefault();
           triggerChatSearch();
-        }
-      });
-    }
+        }}
+      }});
+    }}
 
-    quickQueryButtons.forEach((button) => {
-      button.addEventListener('click', function () {
+    quickQueryButtons.forEach((button) => {{
+      button.addEventListener('click', function () {{
         const query = this.getAttribute('data-query') || '';
-        if (searchInput) {
+        if (searchInput) {{
           searchInput.value = query;
-        }
+        }}
         triggerChatSearch();
-      });
-    });
+      }});
+    }});
   </script>
 </body>
 </html>"""
