@@ -383,17 +383,15 @@ st.markdown(
         border: 1px solid #e4e1e9;
         border-radius: 1rem;
         padding: 0.95rem 1rem;
-        margin: 0.4rem 0 0.9rem;
+        margin: 0.6rem auto 1rem;
+        max-width: 420px;
+        text-align: center;
         box-shadow: 0 10px 28px rgba(81, 0, 150, 0.08);
-    }
-    .ai-loader-head {
-        font-weight: 700;
-        color: #2d2340;
-        margin-bottom: 0.55rem;
     }
     .ai-loader-track {
         display: flex;
         align-items: center;
+        justify-content: center;
         gap: 0.8rem;
     }
     .ai-loader-icon {
@@ -416,6 +414,22 @@ st.markdown(
     .ai-loader-note {
         color: #5b5069;
         font-size: 0.86rem;
+        margin-top: 0.55rem;
+    }
+    .ai-loader-progress {
+        width: 78%;
+        height: 6px;
+        margin: 0.7rem auto 0;
+        border-radius: 999px;
+        background: #efeaf8;
+        overflow: hidden;
+    }
+    .ai-loader-progress-fill {
+        width: 42%;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #cfc8ff 0%, #8d84ff 60%, #cfc8ff 100%);
+        animation: ai-loader-sweep 1.5s ease-in-out infinite;
     }
     @keyframes ai-float {
         0%, 100% {
@@ -425,6 +439,19 @@ st.markdown(
         50% {
             transform: translateY(-5px);
             box-shadow: 0 8px 18px rgba(102, 95, 236, 0.22);
+        }
+    }
+    @keyframes ai-loader-sweep {
+        0% {
+            transform: translateX(-120%);
+            opacity: 0.75;
+        }
+        50% {
+            opacity: 1;
+        }
+        100% {
+            transform: translateX(260%);
+            opacity: 0.75;
         }
     }
     </style>
@@ -444,7 +471,6 @@ def run_chatbot_query(
     loader_placeholder.markdown(
         """
         <div class='ai-loader'>
-            <div class='ai-loader-head'>Preparing answer from review vectors...</div>
             <div class='ai-loader-track'>
                 <div class='ai-loader-icon' aria-label='Milk pack icon'>
                     <svg width='30' height='30' viewBox='0 0 64 64' fill='none' xmlns='http://www.w3.org/2000/svg'>
@@ -467,6 +493,9 @@ def run_chatbot_query(
                         <rect x='27' y='31' width='10' height='10' rx='2' fill='#ffffff'/>
                     </svg>
                 </div>
+            </div>
+            <div class='ai-loader-progress'>
+                <div class='ai-loader-progress-fill'></div>
             </div>
             <div class='ai-loader-note'>Scanning evidence chunks and composing a concise insight.</div>
         </div>
