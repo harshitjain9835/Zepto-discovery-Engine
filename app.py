@@ -185,11 +185,18 @@ def build_ai_prediction_copy(reviews) -> tuple[str, str]:
     discovery_pct = round((discovery_count / total_reviews) * 100)
 
     title = f"{repeat_pct}% of users rely on Zepto for repeat essentials"
-    summary = (
-        f"Reviews.txt suggests {concern_pct}% of users express caution around premium, packaging, or personal-care purchases, "
-        f"while {discovery_pct}% mention discovery or basket suggestions as a useful part of the shopping experience. "
-        "The strongest pattern is high comfort with routine grocery orders and lower confidence in riskier categories."
-    )
+    if discovery_pct > 0:
+        summary = (
+            f"Data suggests {concern_pct}% of users express caution around premium, packaging, or personal-care purchases, "
+            f"while {discovery_pct}% mention discovery or basket suggestions as a useful part of the shopping experience. "
+            "The strongest pattern is high comfort with routine grocery orders and lower confidence in riskier categories."
+        )
+    else:
+        summary = (
+            f"Data suggests {concern_pct}% of users express caution around premium, packaging, or personal-care purchases, "
+            f"while {repeat_pct}% show strong confidence in repeat grocery and staple orders. "
+            "The strongest pattern is high comfort with routine purchases and lower confidence in riskier categories."
+        )
     return title, summary
 
 
@@ -409,7 +416,6 @@ st.markdown(
 )
 
 # Main "Ask AI" section
-st.markdown("<div class='card'>", unsafe_allow_html=True)
 st.markdown(
     """
     <div class='ask-ai-meta'>
@@ -446,9 +452,6 @@ if ask_clicked:
             preprocessing_pipeline=preprocessing_pipeline,
             reviews_context=reviews_context,
         )
-st.markdown("</div>", unsafe_allow_html=True)
-
-st.markdown("<br>", unsafe_allow_html=True)
 
 # AI Prediction section
 lead_title, lead_summary = build_ai_prediction_copy(reviews)
