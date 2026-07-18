@@ -50,7 +50,9 @@ def build_chatbot_response(search_query: str, evidence_chunks: list[dict]) -> tu
 
     summary = (
         f"Based on the latest reviews, customers are mainly discussing {theme_summary} in relation to your question about \"{search_query}\". "
-        "The overall pattern points to a mix of convenience gains and recurring friction around trust, quality, and support."
+        "The evidence suggests a split experience: strong appreciation for convenience in routine purchases, "
+        "but repeated friction around consistency, trust, and issue resolution in higher-risk categories. "
+        "This indicates users are willing to continue frequent basket behavior while staying cautious about quality-sensitive or premium items."
     )
 
     highlights = []
@@ -72,7 +74,12 @@ def build_chatbot_response(search_query: str, evidence_chunks: list[dict]) -> tu
             break
 
     if not highlights:
-        highlights = ["The evidence suggests the experience is mostly shaped by convenience, trust, and product quality."]
+        highlights = [
+            "The evidence suggests the experience is mostly shaped by convenience, trust, and product quality.",
+            "Users appear confident with repeat essentials but more hesitant in categories where quality risk is perceived as higher.",
+        ]
+    elif len(highlights) == 1:
+        highlights.append("Review patterns indicate repeat-order confidence remains high, while trust drops when quality uncertainty increases.")
 
     return summary, highlights
 
@@ -143,7 +150,7 @@ def _call_groq_chat(search_query: str, evidence_chunks: list[dict], reviews_cont
         f"Retrieved evidence:\n{evidence_text}\n\n"
         "Return STRICT JSON only in this schema: "
         "{\"summary\": \"string\", \"highlights\": [\"string\", \"string\", \"string\"]}. "
-        "Keep summary under 90 words and 2-3 concise highlights. "
+        "Keep summary under 150 words and provide exactly 2 concise highlights. "
         "Use a different sentence opener and structure from typical generic summaries. "
         "Avoid repeating stock phrases like 'overall pattern points'. "
         "Ground the answer in at least two concrete evidence cues from retrieved chunks."
@@ -188,7 +195,9 @@ def _call_groq_chat(search_query: str, evidence_chunks: list[dict], reviews_cont
         highlights = [str(x).strip() for x in parsed.get("highlights", []) if str(x).strip()]
         if not summary:
             return None, "Groq response missing summary"
-        return (summary, highlights[:3]), "Groq response used"
+        if len(highlights) < 2:
+            highlights.append("Users show stronger confidence in repeat essentials than in quality-sensitive purchases.")
+        return (summary, highlights[:2]), "Groq response used"
     except Exception as exc:
         return None, f"Groq parse failed: {exc}"
 
@@ -537,9 +546,12 @@ def run_chatbot_query(
         )
 
         if highlights:
-            concise = highlights[:2]
-            st.markdown("**Key takeaway**")
-            st.write(concise[0])
+            concise = [item for item in highlights if str(item).strip()][:2]
+            if len(concise) < 2:
+                concise.append("Signals suggest convenience drives repeat usage, while trust and quality concerns shape category expansion.")
+            st.markdown("**Key takeaways**")
+            st.markdown(f"- {concise[0]}")
+            st.markdown(f"- {concise[1]}")
     finally:
         loader_placeholder.empty()
 
