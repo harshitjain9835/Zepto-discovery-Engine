@@ -312,8 +312,6 @@ def run_chatbot_query(
         else:
             relevant_chunks = []
 
-        st.info(f"Found {len(relevant_chunks)} relevant pieces of evidence for: \"{search_query}\"")
-
         if not relevant_chunks:
             st.warning("No matching evidence was found. Please try a broader question.")
             return
@@ -445,10 +443,6 @@ st.markdown(
         <span class='prediction-chip'>◉ Growth Focus</span>
         <h2 style='margin:0.7rem 0 0; font-size:2rem; line-height:1.15; font-weight:800;'>{lead_title}</h2>
         <p style='margin:0.8rem 0 0; color:#e8dcff; font-size:1.08rem; line-height:1.6;'>{lead_summary}</p>
-        <div class='prediction-actions'>
-            <span class='prediction-primary-btn'>Review Expansion Plan →</span>
-            <span class='prediction-secondary-btn'>View Data Model</span>
-        </div>
     </div>
     """,
     unsafe_allow_html=True,
