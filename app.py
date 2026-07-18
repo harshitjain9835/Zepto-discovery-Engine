@@ -325,18 +325,22 @@ def run_chatbot_query(
         else:
             st.caption(f"{groq_status}. Using local fallback response.")
             summary, highlights = build_chatbot_response(search_query, relevant_chunks)
-        st.markdown("### ✨ Answer")
-        st.write(summary)
+
+        # Summarized response UI without raw review references.
+        st.markdown("### ✨ Summarized Answer")
+        st.markdown(
+            f"""
+            <div style='background:#ffffff; border:1px solid #e4e1e9; border-left:4px solid #665FEC; border-radius:0.9rem; padding:0.9rem 1rem; margin-bottom:0.65rem;'>
+                <p style='margin:0; color:#2d2340; line-height:1.6;'>{summary}</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
         if highlights:
-            st.markdown("**Key takeaways**")
-            for bullet in highlights:
-                st.write(f"- {bullet}")
-
-        for chunk in relevant_chunks:
-            text = str(chunk.get("text", "")).strip()
-            if text:
-                st.caption(f"• {text}")
+            concise = highlights[:2]
+            st.markdown("**Key takeaway**")
+            st.write(concise[0])
 
 reviews = ensure_review_records()
 reviews_context = _load_reviews_txt_context()
