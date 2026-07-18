@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import json
+import re
 from pathlib import Path
 
 import requests
@@ -123,6 +124,35 @@ def _build_quick_reviews_brief(reviews_context: str) -> str:
     return "; ".join(f"{label}:{score}" for label, score in top)
 
 
+def _sanitize_chatbot_text(text: str) -> str:
+    """Remove review-id citation phrases from generated chatbot text."""
+    cleaned = str(text or "")
+
+    # Remove patterns like:
+    # "as seen in reviews [002] and [001]"
+    # "as noted in reviews [002] and [013]"
+    cleaned = re.sub(
+        r"\s*,?\s*as\s+(?:seen|noted|mentioned|stated|observed)\s+in\s+reviews?\s+"
+        r"(?:\[\d+\]|\(\d+\))"
+        r"(?:\s*(?:,|and|&)\s*(?:\[\d+\]|\(\d+\)))*",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+
+    # Remove standalone trailing references like: "(reviews [002], [013])"
+    cleaned = re.sub(
+        r"\s*\(?\s*reviews?\s+(?:\[\d+\]|\(\d+\))(?:\s*(?:,|and|&)\s*(?:\[\d+\]|\(\d+\)))*\s*\)?",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+
+    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
+    cleaned = re.sub(r"\s+([,.;:!?])", r"\1", cleaned)
+    return cleaned
+
+
 def _call_groq_chat(search_query: str, evidence_chunks: list[dict], reviews_context: str) -> tuple[tuple[str, list[str]] | None, str]:
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
@@ -191,8 +221,12 @@ def _call_groq_chat(search_query: str, evidence_chunks: list[dict], reviews_cont
         if start == -1 or end == -1 or end <= start:
             return None
         parsed = json.loads(content[start : end + 1])
-        summary = str(parsed.get("summary", "")).strip()
-        highlights = [str(x).strip() for x in parsed.get("highlights", []) if str(x).strip()]
+        summary = _sanitize_chatbot_text(str(parsed.get("summary", "")).strip())
+        highlights = [
+            _sanitize_chatbot_text(str(x).strip())
+            for x in parsed.get("highlights", [])
+            if _sanitize_chatbot_text(str(x).strip())
+        ]
         if not summary:
             return None, "Groq response missing summary"
         if len(highlights) < 2:
@@ -533,6 +567,9 @@ def run_chatbot_query(
         else:
             st.caption(f"{groq_status}. Using local fallback response.")
             summary, highlights = build_chatbot_response(search_query, relevant_chunks)
+
+        summary = _sanitize_chatbot_text(summary)
+        highlights = [_sanitize_chatbot_text(item) for item in highlights if _sanitize_chatbot_text(item)]
 
         # Summarized response UI without raw review references.
         st.markdown("### ✨ Summarized Answer")
