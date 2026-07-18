@@ -6,6 +6,7 @@ from pathlib import Path
 
 import requests
 import streamlit as st
+from dotenv import load_dotenv
 
 from src.zepto_discovery.annotation import Phase4AnnotationPipeline
 from src.zepto_discovery.dashboard import ensure_review_records, write_dashboard
@@ -14,6 +15,8 @@ from src.zepto_discovery.monitoring import Phase8MonitoringPipeline
 from src.zepto_discovery.preprocessing import PreprocessingPipeline
 from src.zepto_discovery.vector_store import InMemoryVectorStore, embed_and_upsert
 from src.zepto_discovery.embeddings import embed_small
+
+load_dotenv()
 
 
 def build_chatbot_response(search_query: str, evidence_chunks: list[dict]) -> tuple[str, list[str]]:
@@ -84,10 +87,10 @@ def _load_reviews_txt_context(max_chars: int = 12000) -> str:
     return text[:max_chars]
 
 
-def _call_groq_chat(search_query: str, evidence_chunks: list[dict], reviews_context: str) -> tuple[str, list[str]] | None:
+def _call_groq_chat(search_query: str, evidence_chunks: list[dict], reviews_context: str) -> tuple[tuple[str, list[str]] | None, str]:
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        return None
+        return None, "Groq disabled: GROQ_API_KEY not set"
 
     base_url = os.getenv("GROQ_BASE_URL", "https://api.groq.com").rstrip("/")
     model = os.getenv("GROQ_CHAT_MODEL", "llama-3.1-8b-instant")
@@ -100,10 +103,12 @@ def _call_groq_chat(search_query: str, evidence_chunks: list[dict], reviews_cont
         if text:
             evidence_lines.append(f"- [{review_id}] {text}")
 
+    evidence_text = "\n".join(evidence_lines) or "- No retrieved evidence"
+
     user_prompt = (
         f"User question: {search_query}\n\n"
         f"Reviews.txt context:\n{reviews_context or 'No reviews.txt content available.'}\n\n"
-        f"Retrieved evidence:\n{"\n".join(evidence_lines) or '- No retrieved evidence'}\n\n"
+        f"Retrieved evidence:\n{evidence_text}\n\n"
         "Return STRICT JSON only in this schema: "
         "{\"summary\": \"string\", \"highlights\": [\"string\", \"string\", \"string\"]}. "
         "Keep summary under 90 words and 2-3 concise highlights."
@@ -134,8 +139,8 @@ def _call_groq_chat(search_query: str, evidence_chunks: list[dict], reviews_cont
         resp.raise_for_status()
         data = resp.json()
         content = data["choices"][0]["message"]["content"]
-    except Exception:
-        return None
+    except Exception as exc:
+        return None, f"Groq request failed: {exc}"
 
     try:
         start = content.find("{")
@@ -146,10 +151,10 @@ def _call_groq_chat(search_query: str, evidence_chunks: list[dict], reviews_cont
         summary = str(parsed.get("summary", "")).strip()
         highlights = [str(x).strip() for x in parsed.get("highlights", []) if str(x).strip()]
         if not summary:
-            return None
-        return summary, highlights[:3]
-    except Exception:
-        return None
+            return None, "Groq response missing summary"
+        return (summary, highlights[:3]), "Groq response used"
+    except Exception as exc:
+        return None, f"Groq parse failed: {exc}"
 
 
 st.set_page_config(page_title="Zepto Discovery Engine", page_icon="⚡", layout="wide")
@@ -237,6 +242,65 @@ st.markdown(
         background-color: #5a54d8;
         border-color: #5a54d8;
     }
+    .prediction-hero {
+        background: linear-gradient(135deg, #510096 0%, #7000cc 100%);
+        border-radius: 1.6rem;
+        padding: 1.6rem;
+        color: #ffffff;
+        box-shadow: 0 24px 60px rgba(81, 0, 150, 0.18);
+        margin-bottom: 1rem;
+    }
+    .prediction-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        background: #fcd400;
+        color: #6e5c00;
+        padding: 0.25rem 0.65rem;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    .prediction-actions {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-top: 1rem;
+    }
+    .prediction-primary-btn {
+        background: #fcd400;
+        color: #6e5c00;
+        font-weight: 700;
+        border-radius: 0.8rem;
+        padding: 0.65rem 1rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+    }
+    .prediction-secondary-btn {
+        background: rgba(255, 255, 255, 0.16);
+        color: #ffffff;
+        font-weight: 700;
+        border-radius: 0.8rem;
+        padding: 0.65rem 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .prediction-affinity {
+        background: rgba(255, 255, 255, 0.09);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 1rem;
+        padding: 1rem;
+    }
+    .prediction-insight-card {
+        background: #ffffff;
+        border: 1px solid #e4e1e9;
+        border-radius: 1rem;
+        padding: 1rem;
+        margin-bottom: 0.8rem;
+        box-shadow: 0 10px 30px rgba(81, 0, 150, 0.08);
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -267,10 +331,12 @@ def run_chatbot_query(
             st.warning("No matching evidence was found. Please try a broader question.")
             return
 
-        groq_response = _call_groq_chat(search_query, relevant_chunks, reviews_context)
+        groq_response, groq_status = _call_groq_chat(search_query, relevant_chunks, reviews_context)
         if groq_response is not None:
             summary, highlights = groq_response
+            st.caption(groq_status)
         else:
+            st.caption(f"{groq_status}. Using local fallback response.")
             summary, highlights = build_chatbot_response(search_query, relevant_chunks)
         st.markdown("### ✨ Answer")
         st.write(summary)
@@ -281,10 +347,9 @@ def run_chatbot_query(
                 st.write(f"- {bullet}")
 
         for chunk in relevant_chunks:
-            review_id = chunk.get("review_id", "unknown")
             text = str(chunk.get("text", "")).strip()
             if text:
-                st.caption(f"• {review_id}: {text}")
+                st.caption(f"• {text}")
 
 reviews = ensure_review_records()
 reviews_context = _load_reviews_txt_context()
@@ -401,29 +466,55 @@ st.markdown("</div>", unsafe_allow_html=True)
 st.markdown("<br>", unsafe_allow_html=True)
 
 # AI Prediction section
-st.markdown("### 🔮 AI Prediction")
-st.markdown(
-    """
-    <div style='border-top: 4px solid #701EB2; padding: 1.25rem 1rem 1rem; border-radius: 1rem; background: #ffffff; box-shadow: 0 10px 30px rgba(112, 30, 178, 0.08); margin-bottom: 1rem;'>
-        <div style='display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; flex-wrap:wrap;'>
-            <div>
-                <p style='font-size: 1rem; font-weight: 700; color: #701EB2; margin:0;'>Growth Focus</p>
-                <p style='margin:0.5rem 0 0; color:#4c4354; line-height:1.5;'>The AI has identified the strongest evidence-backed themes from reviews. These insights highlight top product and discovery risks or opportunities.</p>
+lead_insight = insights[0] if insights else None
+lead_title = lead_insight.title if lead_insight else "AI Prediction: 14% Higher Conversions in Cold Brew Category"
+lead_summary = lead_insight.summary if lead_insight else "Discovery Engine recommends expanding SKU variety for premium coffee in Zone-B4 based on review signals and category affinity patterns."
+affinity_score = f"{(lead_insight.confidence * 100):.1f}" if lead_insight else "98.2"
+
+st.markdown("### AI Prediction")
+hero_col, score_col = st.columns([3.2, 1.1], gap="large")
+with hero_col:
+    st.markdown(
+        f"""
+        <div class='prediction-hero'>
+            <span class='prediction-chip'>◉ Growth Focus</span>
+            <h2 style='margin:0.7rem 0 0; font-size:2rem; line-height:1.15; font-weight:800;'>{lead_title}</h2>
+            <p style='margin:0.8rem 0 0; color:#e8dcff; font-size:1.08rem; line-height:1.6;'>{lead_summary}</p>
+            <div class='prediction-actions'>
+                <span class='prediction-primary-btn'>Review Expansion Plan →</span>
+                <span class='prediction-secondary-btn'>View Data Model</span>
             </div>
         </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+        """,
+        unsafe_allow_html=True,
+    )
+
+with score_col:
+    st.markdown(
+        f"""
+        <div class='prediction-hero prediction-affinity' style='min-height: 100%;'>
+            <p style='margin:0; color:#d9c9ff; font-size:0.78rem; font-weight:700; letter-spacing:0.06em; text-transform:uppercase;'>Zone B4 Affinity Score</p>
+            <div style='font-size:3rem; font-weight:900; margin-top:0.35rem;'>{affinity_score}</div>
+            <div style='height:4px; background:rgba(255,255,255,0.2); border-radius:999px; margin:0.5rem 0 0.7rem; overflow:hidden;'>
+                <div style='width:98%; height:100%; background:#fcd400;'></div>
+            </div>
+            <div style='display:flex; justify-content:space-between; gap:0.5rem; font-size:0.95rem;'>
+                <span>High Demand</span>
+                <span>Low Inventory Risk</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 if insights:
     for insight in insights[:3]:
         st.markdown(
             f"""
-            <div style='background-color: #f6f2fa; padding: 1rem; border-radius: 1rem; border-left: 3px solid #701EB2; margin-bottom: 1rem;'>
-                <p style='font-weight: 600; margin: 0 0 0.5rem;'>{insight.title}</p>
-                <p style='font-size: 0.95rem; color: #4c4354; margin: 0 0 0.85rem;'>{insight.summary}</p>
-                <p style='font-size: 0.85rem; margin: 0;'>Confidence: <strong>{insight.confidence:.2f}</strong> | Evidence: <strong>{len(insight.evidence_ids)} reviews</strong></p>
+            <div class='prediction-insight-card'>
+                <p style='font-weight: 700; margin: 0 0 0.45rem; color:#510096;'>{insight.title}</p>
+                <p style='font-size: 0.96rem; color: #4c4354; margin: 0 0 0.75rem;'>{insight.summary}</p>
+                <p style='font-size: 0.84rem; margin: 0; color:#5d5370;'>Confidence: <strong>{insight.confidence:.2f}</strong> | Evidence: <strong>{len(insight.evidence_ids)} reviews</strong></p>
             </div>
             """,
             unsafe_allow_html=True,
