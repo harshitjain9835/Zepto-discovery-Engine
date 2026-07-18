@@ -265,6 +265,17 @@ st.markdown(
         color: #4c4354;
         font-size: 0.9rem;
     }
+    div[data-testid="stTextArea"] textarea {
+        background-color: #ffffff !important;
+        border: 2px solid #D6964A !important;
+        border-radius: 1rem !important;
+        color: #1b1b20 !important;
+    }
+    div[data-testid="stTextArea"] textarea:focus {
+        border-color: #D6964A !important;
+        box-shadow: 0 0 0 1px #D6964A !important;
+        outline: none !important;
+    }
     div.stButton > button[kind="primary"],
     div[data-testid="stButton"] > button[kind="primary"] {
         background-color: #665FEC;
@@ -432,11 +443,12 @@ if "search_query_input" not in st.session_state:
 
 search_col, ask_col = st.columns([6, 1.4])
 with search_col:
-    st.text_input(
+    st.text_area(
         "",
         key="search_query_input",
-        placeholder="Describe what you want to discover... e.g., Analyze beverage trends in Indiranagar",
+        placeholder="Describe what you want to discover...",
         label_visibility="collapsed",
+        height=68,
     )
 with ask_col:
     ask_clicked = st.button("Ask AI", use_container_width=True, type="primary", key="ask_ai_btn")
