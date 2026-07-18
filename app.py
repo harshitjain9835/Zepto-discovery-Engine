@@ -87,6 +87,35 @@ def _load_reviews_txt_context(max_chars: int = 12000) -> str:
     return text[:max_chars]
 
 
+def _build_quick_reviews_brief(reviews_context: str) -> str:
+    """Build a compact signal summary from reviews.txt for faster, grounded prompting."""
+    if not reviews_context:
+        return "No reviews.txt context available."
+
+    text = reviews_context.lower()
+    signal_map = {
+        "delivery": ["delivery", "late", "delay", "fast", "arrive"],
+        "quality": ["quality", "fresh", "packaging", "damaged"],
+        "trust": ["trust", "reliable", "hesitant", "confidence"],
+        "support": ["support", "customer", "issue", "resolve"],
+        "discovery": ["discover", "recommend", "search", "category", "basket"],
+        "price/value": ["price", "cost", "value", "expensive", "cheap"],
+    }
+
+    scored_signals = []
+    for label, keywords in signal_map.items():
+        score = sum(text.count(keyword) for keyword in keywords)
+        if score > 0:
+            scored_signals.append((label, score))
+
+    if not scored_signals:
+        return "No clear review themes detected."
+
+    scored_signals.sort(key=lambda item: item[1], reverse=True)
+    top = scored_signals[:4]
+    return "; ".join(f"{label}:{score}" for label, score in top)
+
+
 def _call_groq_chat(search_query: str, evidence_chunks: list[dict], reviews_context: str) -> tuple[tuple[str, list[str]] | None, str]:
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
@@ -104,19 +133,26 @@ def _call_groq_chat(search_query: str, evidence_chunks: list[dict], reviews_cont
             evidence_lines.append(f"- [{review_id}] {text}")
 
     evidence_text = "\n".join(evidence_lines) or "- No retrieved evidence"
+    quick_brief = _build_quick_reviews_brief(reviews_context)
 
     user_prompt = (
         f"User question: {search_query}\n\n"
+        "Analyze reviews.txt context quickly (target under 4 seconds of reasoning) and keep wording fresh.\n"
+        f"Quick review signals: {quick_brief}\n\n"
         f"Reviews.txt context:\n{reviews_context or 'No reviews.txt content available.'}\n\n"
         f"Retrieved evidence:\n{evidence_text}\n\n"
         "Return STRICT JSON only in this schema: "
         "{\"summary\": \"string\", \"highlights\": [\"string\", \"string\", \"string\"]}. "
-        "Keep summary under 90 words and 2-3 concise highlights."
+        "Keep summary under 90 words and 2-3 concise highlights. "
+        "Use a different sentence opener and structure from typical generic summaries. "
+        "Avoid repeating stock phrases like 'overall pattern points'. "
+        "Ground the answer in at least two concrete evidence cues from retrieved chunks."
     )
 
     payload = {
         "model": model,
-        "temperature": 0.2,
+        "temperature": 0.7,
+        "top_p": 0.95,
         "messages": [
             {
                 "role": "system",
@@ -373,7 +409,6 @@ def run_chatbot_query(
         groq_response, groq_status = _call_groq_chat(search_query, relevant_chunks, reviews_context)
         if groq_response is not None:
             summary, highlights = groq_response
-            st.caption(groq_status)
         else:
             st.caption(f"{groq_status}. Using local fallback response.")
             summary, highlights = build_chatbot_response(search_query, relevant_chunks)
