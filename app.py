@@ -124,33 +124,12 @@ def _build_quick_reviews_brief(reviews_context: str) -> str:
     return "; ".join(f"{label}:{score}" for label, score in top)
 
 
-def _sanitize_chatbot_text(text: str) -> str:
-    """Remove review-id citation phrases from generated chatbot text."""
-    cleaned = str(text or "")
-
-    # Remove patterns like:
-    # "as seen in reviews [002] and [001]"
-    # "as noted in reviews [002] and [013]"
-    cleaned = re.sub(
-        r"\s*,?\s*as\s+(?:seen|noted|mentioned|stated|observed)\s+in\s+reviews?\s+"
-        r"(?:\[\d+\]|\(\d+\))"
-        r"(?:\s*(?:,|and|&)\s*(?:\[\d+\]|\(\d+\)))*",
-        "",
-        cleaned,
-        flags=re.IGNORECASE,
-    )
-
-    # Remove standalone trailing references like: "(reviews [002], [013])"
-    cleaned = re.sub(
-        r"\s*\(?\s*reviews?\s+(?:\[\d+\]|\(\d+\))(?:\s*(?:,|and|&)\s*(?:\[\d+\]|\(\d+\)))*\s*\)?",
-        "",
-        cleaned,
-        flags=re.IGNORECASE,
-    )
-
-    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
+def _strip_bracketed_ids(text: str) -> str:
+    """Remove bracketed ID tokens like [002] from chatbot takeaway text."""
+    cleaned = re.sub(r"\[(?:\s*[A-Za-z0-9_-]+\s*)\]", "", str(text or ""))
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
     cleaned = re.sub(r"\s+([,.;:!?])", r"\1", cleaned)
-    return cleaned
+    return cleaned.strip()
 
 
 def _call_groq_chat(search_query: str, evidence_chunks: list[dict], reviews_context: str) -> tuple[tuple[str, list[str]] | None, str]:
@@ -221,12 +200,8 @@ def _call_groq_chat(search_query: str, evidence_chunks: list[dict], reviews_cont
         if start == -1 or end == -1 or end <= start:
             return None
         parsed = json.loads(content[start : end + 1])
-        summary = _sanitize_chatbot_text(str(parsed.get("summary", "")).strip())
-        highlights = [
-            _sanitize_chatbot_text(str(x).strip())
-            for x in parsed.get("highlights", [])
-            if _sanitize_chatbot_text(str(x).strip())
-        ]
+        summary = str(parsed.get("summary", "")).strip()
+        highlights = [_strip_bracketed_ids(str(x).strip()) for x in parsed.get("highlights", []) if _strip_bracketed_ids(str(x).strip())]
         if not summary:
             return None, "Groq response missing summary"
         if len(highlights) < 2:
@@ -568,9 +543,6 @@ def run_chatbot_query(
             st.caption(f"{groq_status}. Using local fallback response.")
             summary, highlights = build_chatbot_response(search_query, relevant_chunks)
 
-        summary = _sanitize_chatbot_text(summary)
-        highlights = [_sanitize_chatbot_text(item) for item in highlights if _sanitize_chatbot_text(item)]
-
         # Summarized response UI without raw review references.
         st.markdown("### ✨ Summarized Answer")
         st.markdown(
@@ -583,7 +555,7 @@ def run_chatbot_query(
         )
 
         if highlights:
-            concise = [item for item in highlights if str(item).strip()][:2]
+            concise = [_strip_bracketed_ids(item) for item in highlights if _strip_bracketed_ids(item)][:2]
             if len(concise) < 2:
                 concise.append("Signals suggest convenience drives repeat usage, while trust and quality concerns shape category expansion.")
             st.markdown("**Key takeaways**")
