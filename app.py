@@ -378,6 +378,55 @@ st.markdown(
         margin-bottom: 0.8rem;
         box-shadow: 0 10px 30px rgba(81, 0, 150, 0.08);
     }
+    .ai-loader {
+        background: #ffffff;
+        border: 1px solid #e4e1e9;
+        border-radius: 1rem;
+        padding: 0.95rem 1rem;
+        margin: 0.4rem 0 0.9rem;
+        box-shadow: 0 10px 28px rgba(81, 0, 150, 0.08);
+    }
+    .ai-loader-head {
+        font-weight: 700;
+        color: #2d2340;
+        margin-bottom: 0.55rem;
+    }
+    .ai-loader-track {
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+    }
+    .ai-loader-icon {
+        width: 52px;
+        height: 52px;
+        border-radius: 0.8rem;
+        background: #f7f2ff;
+        border: 1px solid #eadfff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        animation: ai-float 1.45s ease-in-out infinite;
+    }
+    .ai-loader-icon:nth-child(2) {
+        animation-delay: 0.16s;
+    }
+    .ai-loader-icon:nth-child(3) {
+        animation-delay: 0.32s;
+    }
+    .ai-loader-note {
+        color: #5b5069;
+        font-size: 0.86rem;
+    }
+    @keyframes ai-float {
+        0%, 100% {
+            transform: translateY(0);
+            box-shadow: 0 0 0 rgba(102, 95, 236, 0);
+        }
+        50% {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 18px rgba(102, 95, 236, 0.22);
+        }
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -391,7 +440,41 @@ def run_chatbot_query(
     preprocessing_pipeline: PreprocessingPipeline,
     reviews_context: str,
 ) -> None:
-    with st.spinner("Synthesizing answer from review evidence..."):
+    loader_placeholder = st.empty()
+    loader_placeholder.markdown(
+        """
+        <div class='ai-loader'>
+            <div class='ai-loader-head'>Preparing answer from review vectors...</div>
+            <div class='ai-loader-track'>
+                <div class='ai-loader-icon' aria-label='Milk pack icon'>
+                    <svg width='30' height='30' viewBox='0 0 64 64' fill='none' xmlns='http://www.w3.org/2000/svg'>
+                        <path d='M22 10h20l6 8v36H16V18l6-8z' fill='#ffffff' stroke='#665FEC' stroke-width='2.2'/>
+                        <path d='M22 10l10 8 10-8' stroke='#665FEC' stroke-width='2.2' fill='none'/>
+                        <rect x='25' y='28' width='14' height='18' rx='2.5' fill='#E8E5FF'/>
+                    </svg>
+                </div>
+                <div class='ai-loader-icon' aria-label='Fruit icon'>
+                    <svg width='30' height='30' viewBox='0 0 64 64' fill='none' xmlns='http://www.w3.org/2000/svg'>
+                        <circle cx='33' cy='35' r='16' fill='#FFC74A' stroke='#D6964A' stroke-width='2.2'/>
+                        <path d='M31 18c-1-4 2-7 6-8' stroke='#6FA969' stroke-width='2.6' stroke-linecap='round'/>
+                        <ellipse cx='39' cy='17' rx='6' ry='3.5' fill='#9AD37D' transform='rotate(20 39 17)'/>
+                    </svg>
+                </div>
+                <div class='ai-loader-icon' aria-label='Shampoo bottle icon'>
+                    <svg width='30' height='30' viewBox='0 0 64 64' fill='none' xmlns='http://www.w3.org/2000/svg'>
+                        <rect x='27' y='10' width='10' height='7' rx='2' fill='#4AAEEA'/>
+                        <path d='M23 19h18v32a6 6 0 0 1-6 6h-6a6 6 0 0 1-6-6V19z' fill='#8ED3FF' stroke='#3B8BC0' stroke-width='2.2'/>
+                        <rect x='27' y='31' width='10' height='10' rx='2' fill='#ffffff'/>
+                    </svg>
+                </div>
+            </div>
+            <div class='ai-loader-note'>Scanning evidence chunks and composing a concise insight.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    try:
         query_embedding = embed_small(search_query)
         results = vector_store.query(query_embedding, top_k=10)
         candidate_chunks = [record.metadata for record, _ in results]
@@ -428,6 +511,8 @@ def run_chatbot_query(
             concise = highlights[:2]
             st.markdown("**Key takeaway**")
             st.write(concise[0])
+    finally:
+        loader_placeholder.empty()
 
 reviews = ensure_review_records()
 reviews_context = _load_reviews_txt_context()
