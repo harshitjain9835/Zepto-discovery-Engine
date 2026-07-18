@@ -222,13 +222,6 @@ st.markdown(
         color: #4c4354;
         font-size: 0.9rem;
     }
-    .quick-label {
-        margin-top: 0.85rem;
-        margin-bottom: 0.25rem;
-        color: #4c4354;
-        font-size: 0.9rem;
-        font-weight: 600;
-    }
     div.stButton > button[kind="primary"],
     div[data-testid="stButton"] > button[kind="primary"] {
         background-color: #665FEC;
@@ -286,12 +279,6 @@ st.markdown(
         border-radius: 0.8rem;
         padding: 0.65rem 1rem;
         border: 1px solid rgba(255, 255, 255, 0.2);
-    }
-    .prediction-affinity {
-        background: rgba(255, 255, 255, 0.09);
-        border: 1px solid rgba(255, 255, 255, 0.22);
-        border-radius: 1rem;
-        padding: 1rem;
     }
     .prediction-insight-card {
         background: #ffffff;
@@ -427,30 +414,7 @@ with search_col:
 with ask_col:
     ask_clicked = st.button("Ask AI", use_container_width=True, type="primary", key="ask_ai_btn")
 
-st.markdown("<div class='quick-label'>Quick insights:</div>", unsafe_allow_html=True)
-quick_queries = [
-    "Why are dairy sales peaking in Indiranagar?",
-    "Show me top 5 growing categories",
-    "Forecast weekend stock needs for Zone-B4",
-    "Customer retention for premium fruits",
-]
-
-quick_cols = st.columns(2)
-quick_clicked_query = ""
-for index, query in enumerate(quick_queries):
-    with quick_cols[index % 2]:
-        if st.button(query, key=f"quick_query_{index}", use_container_width=True):
-            quick_clicked_query = query
-
-if quick_clicked_query:
-    st.session_state.search_query_input = quick_clicked_query
-    run_chatbot_query(
-        quick_clicked_query,
-        vector_store=vector_store,
-        preprocessing_pipeline=preprocessing_pipeline,
-        reviews_context=reviews_context,
-    )
-elif ask_clicked:
+if ask_clicked:
     search_query = st.session_state.search_query_input.strip()
     if not search_query:
         st.warning("Please enter a question.")
@@ -469,43 +433,22 @@ st.markdown("<br>", unsafe_allow_html=True)
 lead_insight = insights[0] if insights else None
 lead_title = lead_insight.title if lead_insight else "AI Prediction: 14% Higher Conversions in Cold Brew Category"
 lead_summary = lead_insight.summary if lead_insight else "Discovery Engine recommends expanding SKU variety for premium coffee in Zone-B4 based on review signals and category affinity patterns."
-affinity_score = f"{(lead_insight.confidence * 100):.1f}" if lead_insight else "98.2"
 
 st.markdown("### AI Prediction")
-hero_col, score_col = st.columns([3.2, 1.1], gap="large")
-with hero_col:
-    st.markdown(
-        f"""
-        <div class='prediction-hero'>
-            <span class='prediction-chip'>◉ Growth Focus</span>
-            <h2 style='margin:0.7rem 0 0; font-size:2rem; line-height:1.15; font-weight:800;'>{lead_title}</h2>
-            <p style='margin:0.8rem 0 0; color:#e8dcff; font-size:1.08rem; line-height:1.6;'>{lead_summary}</p>
-            <div class='prediction-actions'>
-                <span class='prediction-primary-btn'>Review Expansion Plan →</span>
-                <span class='prediction-secondary-btn'>View Data Model</span>
-            </div>
+st.markdown(
+    f"""
+    <div class='prediction-hero'>
+        <span class='prediction-chip'>◉ Growth Focus</span>
+        <h2 style='margin:0.7rem 0 0; font-size:2rem; line-height:1.15; font-weight:800;'>{lead_title}</h2>
+        <p style='margin:0.8rem 0 0; color:#e8dcff; font-size:1.08rem; line-height:1.6;'>{lead_summary}</p>
+        <div class='prediction-actions'>
+            <span class='prediction-primary-btn'>Review Expansion Plan →</span>
+            <span class='prediction-secondary-btn'>View Data Model</span>
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-with score_col:
-    st.markdown(
-        f"""
-        <div class='prediction-hero prediction-affinity' style='min-height: 100%;'>
-            <p style='margin:0; color:#d9c9ff; font-size:0.78rem; font-weight:700; letter-spacing:0.06em; text-transform:uppercase;'>Zone B4 Affinity Score</p>
-            <div style='font-size:3rem; font-weight:900; margin-top:0.35rem;'>{affinity_score}</div>
-            <div style='height:4px; background:rgba(255,255,255,0.2); border-radius:999px; margin:0.5rem 0 0.7rem; overflow:hidden;'>
-                <div style='width:98%; height:100%; background:#fcd400;'></div>
-            </div>
-            <div style='display:flex; justify-content:space-between; gap:0.5rem; font-size:0.95rem;'>
-                <span>High Demand</span>
-                <span>Low Inventory Risk</span>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 if insights:
     for insight in insights[:3]:
