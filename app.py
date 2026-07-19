@@ -17,7 +17,8 @@ from src.zepto_discovery.preprocessing import PreprocessingPipeline
 from src.zepto_discovery.vector_store import InMemoryVectorStore, embed_and_upsert
 from src.zepto_discovery.embeddings import embed_small
 
-load_dotenv()
+PROJECT_ROOT = Path(__file__).resolve().parent
+load_dotenv(dotenv_path=PROJECT_ROOT / ".env", override=True)
 
 
 def build_chatbot_response(search_query: str, evidence_chunks: list[dict]) -> tuple[str, list[str]]:
@@ -133,12 +134,12 @@ def _strip_bracketed_ids(text: str) -> str:
 
 
 def _call_groq_chat(search_query: str, evidence_chunks: list[dict], reviews_context: str) -> tuple[tuple[str, list[str]] | None, str]:
-    api_key = os.getenv("GROQ_API_KEY")
+    api_key = (os.getenv("GROQ_API_KEY") or "").strip().strip('"').strip("'")
     if not api_key:
         return None, "Groq disabled: GROQ_API_KEY not set"
 
-    base_url = os.getenv("GROQ_BASE_URL", "https://api.groq.com").rstrip("/")
-    model = os.getenv("GROQ_CHAT_MODEL", "llama-3.1-8b-instant")
+    base_url = (os.getenv("GROQ_BASE_URL", "https://api.groq.com") or "https://api.groq.com").strip().rstrip("/")
+    model = (os.getenv("GROQ_CHAT_MODEL", "llama-3.1-8b-instant") or "llama-3.1-8b-instant").strip()
     url = f"{base_url}/openai/v1/chat/completions"
 
     evidence_lines = []
