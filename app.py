@@ -126,8 +126,13 @@ def _build_quick_reviews_brief(reviews_context: str) -> str:
 
 
 def _strip_bracketed_ids(text: str) -> str:
-    """Remove bracketed ID tokens like [002] from chatbot takeaway text."""
-    cleaned = re.sub(r"\[(?:\s*[A-Za-z0-9_-]+\s*)\]", "", str(text or ""))
+    """Remove bracketed ID tokens and surrounding phrases from chatbot text."""
+    # Remove phrases like "as seen in [review-001]" or "(evidence: [review-002])"
+    text = str(text or "")
+    cleaned = re.sub(r"\s*\(\s*evidence\s*:\s*\[[^\]]+\]\s*\)", "", text, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*(?:as (?:seen|evident) in|in|from|ref\.|see)\s*\[[^\]]+\]", "", cleaned, flags=re.IGNORECASE)
+    # Remove any remaining standalone bracketed IDs
+    cleaned = re.sub(r"\[(?:\s*[A-Za-z0-9_-]+\s*)\]", "", cleaned)
     cleaned = re.sub(r"\s{2,}", " ", cleaned)
     cleaned = re.sub(r"\s+([,.;:!?])", r"\1", cleaned)
     return cleaned.strip()
@@ -201,7 +206,7 @@ def _call_groq_chat(search_query: str, evidence_chunks: list[dict], reviews_cont
         if start == -1 or end == -1 or end <= start:
             return None
         parsed = json.loads(content[start : end + 1])
-        summary = str(parsed.get("summary", "")).strip()
+        summary = _strip_bracketed_ids(str(parsed.get("summary", "")))
         highlights = [_strip_bracketed_ids(str(x).strip()) for x in parsed.get("highlights", []) if _strip_bracketed_ids(str(x).strip())]
         if not summary:
             return None, "Groq response missing summary"
